@@ -52,8 +52,11 @@ honored across sessions, not a one-time task list.
 2. Before committing any visual/manifest/service-worker change, take Playwright screenshots at
    mobile (~390px), tablet (~768px), and desktop (~1200px) widths and actually look at them — there's no
    mockup to diff against, so this is the only check against drift.
-3. Run `npx lighthouse` locally before shipping installability-affecting changes; PWA category should
-   stay ≥ 90.
+3. Before shipping manifest/service-worker changes, run `node scripts/check-pwa.mjs <url>` — modern
+   Lighthouse (v10+) dropped the scored "PWA" category, so this calls Chrome's own
+   `Page.getInstallabilityErrors` CDP check directly (the same check Chrome itself uses to decide
+   whether to offer install) plus a real offline-reload check. Run `npx lighthouse` for
+   accessibility/best-practices/performance — those categories are still scored normally.
 4. Run the `code-review` skill on the staged diff before every commit. Fix every finding; re-verify after
    fixing rather than trusting the fix looks right.
 5. Commit, push the feature branch, open a PR against `main`, subscribe to its activity.
@@ -78,6 +81,13 @@ native/       # Bubblewrap TWA scaffold — see native/README.md for the build/s
   `arthquest-pwa`'s Vite `base` gotcha.
 - Chromium for local Lighthouse/Playwright runs: `/opt/pw-browsers/...` (path specific to the sandboxed
   dev environment) — don't run `playwright install`, it's already there.
+- In the sandboxed dev environment, Chromium launched by Playwright can't reach Google Fonts (no proxy
+  configured for its egress) — `scripts/qa-screenshot.mjs` already ignores failures against
+  `fonts.googleapis.com`/`fonts.gstatic.com` as a known local-only limitation, not a real app bug. Real
+  deployments have normal internet access.
+- `scripts/check-pwa.mjs` must use `chromium.launchPersistentContext()`, not `browser.newContext()` —
+  an ephemeral context reads as Incognito to Chrome's installability check and always fails with
+  `in-incognito`, which isn't a real defect.
 - IndexedDB is the only persistence layer. If a browser genuinely has no IndexedDB (very old browsers,
   some restrictive private-mode configurations), the app degrades to in-memory-only for that session —
   that's an accepted tradeoff, not a bug to route around with a `localStorage` fallback.
