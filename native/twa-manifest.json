@@ -1,0 +1,66 @@
+{
+  "packageId": "io.github.axarl007.commanddeck",
+  "host": "axarl007.github.io",
+  "name": "Command Deck",
+  "launcherName": "Command Deck",
+  "display": "standalone",
+  "themeColor": "#14120E",
+  "themeColorDark": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#14120E",
+  "enableNotifications": true,
+  "startUrl": "/command-deck/index.html",
+  "iconUrl": "https://axarl007.github.io/command-deck/icon-512.png",
+  "maskableIconUrl": "https://axarl007.github.io/command-deck/icon-512-maskable.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "android"
+  },
+  "appVersionName": "1",
+  "appVersionCode": 1,
+  "shortcuts": [
+    {
+      "name": "Capture",
+      "shortName": "Capture",
+      "url": "https://axarl007.github.io/command-deck/index.html#capture",
+      "chosenIconUrl": "https://axarl007.github.io/command-deck/shortcut-capture.png"
+    },
+    {
+      "name": "Board",
+      "shortName": "Board",
+      "url": "https://axarl007.github.io/command-deck/index.html#board",
+      "chosenIconUrl": "https://axarl007.github.io/command-deck/shortcut-board.png"
+    },
+    {
+      "name": "Signal",
+      "shortName": "Signal",
+      "url": "https://axarl007.github.io/command-deck/index.html#signal",
+      "chosenIconUrl": "https://axarl007.github.io/command-deck/shortcut-signal.png"
+    }
+  ],
+  "generatorApp": "unknown",
+  "webManifestUrl": "https://axarl007.github.io/command-deck/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://axarl007.github.io/command-deck/",
+  "minSdkVersion": 21,
+  "orientation": "portrait",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "",
+  "displayOverride": [],
+  "appVersion": "1"
+}

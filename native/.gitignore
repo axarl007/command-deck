@@ -1,0 +1,14 @@
+*.iml
+.gradle/
+/local.properties
+.idea/
+.DS_Store
+/build
+/app/build
+/captures
+.externalNativeBuild
+.cxx
+
+# Real signing key — generated locally with `keytool`/`bubblewrap`, never committed.
+# Mirrors the arthquest Android repo's own convention (see native/README.md).
+*.keystore
