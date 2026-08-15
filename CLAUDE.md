@@ -34,15 +34,31 @@ honored across sessions, not a one-time task list.
    load and on `hashchange`; `switchView()` syncs the hash back via `history.replaceState`, not a plain
    `location.hash =` assignment, so tapping between nav tabs doesn't spam browser history. This is also
    how the manifest's `shortcuts` entries jump straight to a screen.
-6. **Native wrapper (`/native`) release signing: local build *or* CI, both real, user's choice each time.**
-   The `arthquest` Android repo (checked directly) has no CI signing at all — `local.properties`
-   (gitignored) holds the keystore, releases are human-built and human-uploaded. `command-deck` supports
-   that same local path (`native/README.md` step 4A), *and* a `workflow_dispatch` GitHub Actions
-   workflow (`build-signed-apk.yml`, step 4B) that reads the keystore from repo secrets
-   (`ANDROID_KEYSTORE_BASE64`/`ANDROID_KEYSTORE_PASSWORD`/`ANDROID_KEY_PASSWORD`) — a deliberate,
-   explicitly-requested divergence: this dev environment's network policy blocks the Android SDK, but a
-   GitHub-hosted runner isn't subject to that, so CI can build where a local Claude session in this
-   sandbox can't. The keystore itself is still never committed either way.
+6. **Android release APK is signed with a stable keystore kept in GitHub Actions secrets, not committed
+   to git** — mirrors `arthquest-pwa`'s own `android-release.yml` pattern exactly (checked directly
+   against that repo, not from memory). This repo is public, so a committed keystore+passwords would let
+   anyone sign their own "update" with the app's real certificate and have Android accept it over a
+   legitimate install. `native/app/build.gradle`'s `signingConfigs.release` reads `ANDROID_KEYSTORE_PATH`
+   (a file path, not the key material itself), `ANDROID_KEYSTORE_STORE_PASSWORD`,
+   `ANDROID_KEYSTORE_KEY_ALIAS`, `ANDROID_KEYSTORE_KEY_PASSWORD` from the environment;
+   `.github/workflows/android-release.yml` decodes the `ANDROID_KEYSTORE_BASE64` repo secret to a
+   runner-local temp file and passes the other three straight through from their own same-named repo
+   secrets. **One-time setup**: in GitHub repo Settings → Secrets and variables → Actions, add
+   `ANDROID_KEYSTORE_BASE64` (the release keystore file, base64-encoded), plus the three password/alias
+   secrets — see `native/README.md` step 4B for exact commands. If any of the four are ever missing,
+   `hasReleaseSigning` in `build.gradle` goes `false` and Gradle silently writes an *unsigned*
+   `app-release-unsigned.apk` instead — `android-release.yml` has an explicit "Verify a signed release
+   APK was produced" step right after the build that checks for the real `app-release.apk` path and
+   fails the job loudly (pointing back to this note) rather than letting that turn into a
+   silently-published, assetless GitHub Release. **Never rotate/regenerate this keystore** once set — a
+   different signing key on a future build makes Android refuse to install it as an update over the
+   existing app, forcing an uninstall/reinstall. A local, gitignored `native/keystore/release.keystore` +
+   `native/keystore/release.keystore.properties` pair is also supported (env vars win if both are
+   present) for locally-signed dev builds — never commit either file. Runs automatically on every push
+   to `main` (guarded to only actually build on `main` even via manual dispatch — see the workflow's own
+   comment for why), not deliberately-manual like `arthquest`'s (the plain Android Kotlin app, not the
+   PWA) still is — `arthquest-pwa` moved off that manual pattern for good reasons captured in its own
+   CLAUDE.md, and this repo follows suit rather than the older convention.
 7. **No real Android home-screen widget yet.** `/native` is a Bubblewrap TWA scaffold only — it wraps the
    PWA as an installable APK. `AppWidgetProvider`, widget layout XML, and update logic are unbuilt,
    tracked as separate future work, not stubbed here.

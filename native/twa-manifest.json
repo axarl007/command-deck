@@ -17,7 +17,7 @@
   "maskableIconUrl": "https://axarl007.github.io/command-deck/icon-512-maskable.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
-    "path": "./android.keystore",
+    "path": "./keystore/release.keystore",
     "alias": "android"
   },
   "appVersionName": "1",

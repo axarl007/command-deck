@@ -21,62 +21,73 @@ domain by hand. Everything else — the Gradle project, `AndroidManifest.xml`, J
 classes, and every icon (`ic_launcher`, `ic_maskable`, notification icon, splash screens, shortcut
 icons at every density) — is real generated output, not stubbed.
 
+**Don't run `bubblewrap update`** without re-applying the signing/versioning changes described below
+first — it regenerates `app/build.gradle` wholesale from `twa-manifest.json` via the same
+`TwaGenerator.createTwaProject()` path, which would silently overwrite the hand-added `signingConfigs`
+block and the `ANDROID_VERSION_CODE`-driven `versionCode`/`versionName` logic entirely, not just
+`twa-manifest.json`'s own (otherwise-unused, purely informational) `appVersionCode`/`appVersionName`
+fields.
+
 ## What's left before this builds or installs anywhere
 
 1. **Android SDK.** Install Android Studio (or the standalone `cmdline-tools` + `sdkmanager`) locally —
    this repo/session cannot do it. Point `local.properties` (create it, gitignored) at your SDK:
-   `sdk.dir=/path/to/Android/sdk`.
-2. **A real signing key**, generated the same way regardless of which build path below you use:
+   `sdk.dir=/path/to/Android/sdk`. (CI doesn't need this step — `android-release.yml` installs the SDK
+   itself via `android-actions/setup-android`, since this project's `compileSdkVersion`/
+   `targetSdkVersion` 36 isn't reliably among whatever ubuntu-latest ships preinstalled.)
+2. **A real signing key** — same command regardless of which build path below you use:
    ```
-   keytool -genkey -v -keystore android.keystore -alias android \
+   mkdir -p keystore  # keytool doesn't create missing parent directories itself
+   keytool -genkey -v -keystore keystore/release.keystore -alias android \
      -keyalg RSA -keysize 2048 -validity 10000
    ```
-   `android.keystore` is gitignored here — never commit it. `twa-manifest.json`'s `signingKey` already
-   points at `./android.keystore` with alias `android`, matching `keytool`'s defaults above.
+   `keystore/` is gitignored entirely here — never commit either the keystore or a properties file
+   next to it. **This key must stay the same forever** once you start publishing releases with it — a
+   different key on a future build makes Android refuse to install it as an update over the existing
+   app, forcing an uninstall/reinstall.
 3. **Digital Asset Links.** For Chrome to open the TWA without browser chrome, `https://axarl007.github.io/.well-known/assetlinks.json`
    must publish your signing key's SHA-256 fingerprint. Once you have a real key:
    ```
-   npx @bubblewrap/cli fingerprint  # or: keytool -list -v -keystore android.keystore
+   npx @bubblewrap/cli fingerprint  # or: keytool -list -v -keystore keystore/release.keystore -alias android
    ```
    then add that fingerprint to `arthquest-pwa`-style `.well-known/assetlinks.json` served from the
    `command-deck` GitHub Pages root (a new small file — not part of this PR, since it depends on a key
    that doesn't exist yet).
 4. **Build — pick one:**
 
-   **A. Locally**, same pattern as the `arthquest` Android repo (checked directly — that repo has no CI
-   signing automation, it's pure local `local.properties`): add these four lines to `native/local.properties`
-   (gitignored, same file as the SDK path above):
+   **A. Locally**, for testing before you've set up CI secrets: create
+   `native/keystore/release.keystore.properties` (gitignored) next to the keystore from step 2:
    ```
-   RELEASE_STORE_FILE=android.keystore
-   RELEASE_STORE_PASSWORD=<your keystore password>
-   RELEASE_KEY_ALIAS=android
-   RELEASE_KEY_PASSWORD=<your key password>
+   storePassword=<your keystore password>
+   keyAlias=android
+   keyPassword=<your key password>
    ```
    then `./gradlew assembleRelease` from this directory produces a signed APK at
-   `app/build/outputs/apk/release/app-release.apk`. Leave those four lines out and the same command
-   still succeeds — it just produces an unsigned APK nothing can install as an update, the same
-   graceful-degradation behavior as `arthquest`'s own `build.gradle.kts`.
+   `app/build/outputs/apk/release/app-release.apk`. Leave that file out and the same command still
+   succeeds — it just produces `app-release-unsigned.apk` instead, which nothing can install as an
+   update.
 
-   **B. In CI** (`.github/workflows/build-signed-apk.yml`, triggered manually from the Actions tab) — a
-   deliberate divergence from `arthquest`'s local-only approach for this repo, since a GitHub-hosted
-   runner has normal internet access and isn't subject to this dev environment's network policy that
-   blocks the Android SDK. One-time setup, in **Settings → Secrets and variables → Actions**:
-   - `ANDROID_KEYSTORE_BASE64` — `base64 -w0 android.keystore` (macOS: `base64 -i android.keystore`),
-     paste the output
-   - `ANDROID_KEYSTORE_PASSWORD` — your keystore password
-   - `ANDROID_KEY_PASSWORD` — your key password (alias is hardcoded to `android` in the workflow)
+   **B. In CI** (`.github/workflows/android-release.yml`) — mirrors `arthquest-pwa`'s own
+   `android-release.yml` pattern exactly (checked directly). Runs automatically on every push to `main`,
+   or manually via the Actions tab. One-time setup, in **Settings → Secrets and variables → Actions**,
+   add four repository secrets:
+   - `ANDROID_KEYSTORE_BASE64` — `base64 -w0 keystore/release.keystore` (macOS:
+     `base64 -i keystore/release.keystore`), paste the output
+   - `ANDROID_KEYSTORE_STORE_PASSWORD` — your keystore password
+   - `ANDROID_KEYSTORE_KEY_ALIAS` — `android` (or whatever alias you used in step 2)
+   - `ANDROID_KEYSTORE_KEY_PASSWORD` — your key password
 
-   Then run the workflow (Actions tab → "Build signed APK" → Run workflow), give it a version name —
-   it bumps `versionCode`/`versionName` in `build.gradle`, builds, and (if left checked) attaches the
-   signed APK straight to a new GitHub Release. Not run here either — I can write and syntax-check the
-   workflow, but I have no way to actually execute a GitHub Actions run or verify secrets from this
-   session.
+   Until all four are set, the workflow **fails loudly** at either the "Decode release keystore" step
+   (empty secret) or the "Verify a signed release APK was produced" step (partial config) — it never
+   silently publishes an unsigned build labeled as signed. Not run here either — I can write and
+   syntax-check the workflow, but I have no way to actually execute a GitHub Actions run or verify
+   secrets from this session.
 5. **Install on a device/emulator.** No device or emulator is attached to this environment — this is
    genuinely a "run it yourself" step regardless of which build path you used.
 
-Either path produces the same thing the `arthquest` repo already does with its releases: a signed
-`app-release.apk` attached to a GitHub Release with `adb install -r app-release.apk` instructions,
-updating in place on future releases.
+Path B produces exactly what `arthquest-pwa` already does with its own Android releases: a signed
+`app-release.apk` published to GitHub Releases (tag `android-v<run-number>`), installable in place over
+any prior release from this repo via `adb install -r app-release.apk`.
 
 ## Not done yet (separate follow-up, not this ticket)
 
