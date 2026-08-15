@@ -34,11 +34,15 @@ honored across sessions, not a one-time task list.
    load and on `hashchange`; `switchView()` syncs the hash back via `history.replaceState`, not a plain
    `location.hash =` assignment, so tapping between nav tabs doesn't spam browser history. This is also
    how the manifest's `shortcuts` entries jump straight to a screen.
-6. **Native wrapper (`/native`) mirrors the `arthquest` Android repo's own release pattern exactly** —
-   that repo has no CI signing automation at all: `local.properties` (gitignored) holds the real
-   keystore, and each release is a single human-built, human-uploaded `app-release.apk` GitHub Release
-   asset with `adb install -r app-release.apk` instructions. Do the same here. Don't try to automate
-   signing in CI without being asked — there's a real, deliberate reason the source project doesn't.
+6. **Native wrapper (`/native`) release signing: local build *or* CI, both real, user's choice each time.**
+   The `arthquest` Android repo (checked directly) has no CI signing at all — `local.properties`
+   (gitignored) holds the keystore, releases are human-built and human-uploaded. `command-deck` supports
+   that same local path (`native/README.md` step 4A), *and* a `workflow_dispatch` GitHub Actions
+   workflow (`build-signed-apk.yml`, step 4B) that reads the keystore from repo secrets
+   (`ANDROID_KEYSTORE_BASE64`/`ANDROID_KEYSTORE_PASSWORD`/`ANDROID_KEY_PASSWORD`) — a deliberate,
+   explicitly-requested divergence: this dev environment's network policy blocks the Android SDK, but a
+   GitHub-hosted runner isn't subject to that, so CI can build where a local Claude session in this
+   sandbox can't. The keystore itself is still never committed either way.
 7. **No real Android home-screen widget yet.** `/native` is a Bubblewrap TWA scaffold only — it wraps the
    PWA as an installable APK. `AppWidgetProvider`, widget layout XML, and update logic are unbuilt,
    tracked as separate future work, not stubbed here.

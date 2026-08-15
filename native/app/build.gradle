@@ -20,6 +20,25 @@ plugins {
     id 'com.android.application'
 }
 
+// Release signing: local dev reads native/local.properties (gitignored, see
+// native/README.md); CI reads the same values from environment variables fed by
+// GitHub Secrets. Neither is required to build — assembleRelease still succeeds
+// unsigned if nothing is configured (matches the arthquest Android repo's own
+// build.gradle.kts, which falls back the same way rather than hard-failing).
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+def releaseStoreFile = System.getenv('ANDROID_KEYSTORE_PATH') ?: localProperties.getProperty('RELEASE_STORE_FILE')
+def releaseStorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: localProperties.getProperty('RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = System.getenv('ANDROID_KEY_ALIAS') ?: localProperties.getProperty('RELEASE_KEY_ALIAS') ?: 'android'
+def releaseKeyPassword = System.getenv('ANDROID_KEY_PASSWORD') ?: localProperties.getProperty('RELEASE_KEY_PASSWORD')
+// keyAlias always has a value (defaults to 'android' above) so it doesn't gate this — but a
+// partially-configured secret/property set (e.g. keystore set, password missing) should still
+// fall back to unsigned rather than hard-failing assembleRelease with a null-password error.
+def releaseSigningConfigured = releaseStoreFile && releaseStorePassword && releaseKeyPassword
+
 def twaManifest = [
     applicationId: 'io.github.axarl007.commanddeck',
     hostName: 'axarl007.github.io', // The domain being opened in the TWA.
@@ -150,9 +169,22 @@ android {
 
         
     }
+    signingConfigs {
+        release {
+            if (releaseSigningConfigured) {
+                storeFile rootProject.file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled true
+            if (releaseSigningConfigured) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     compileOptions {
