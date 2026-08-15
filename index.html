@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Command Deck</title>
+<meta name="description" content="A quiet ops room for your work — capture, board, signal, pulse.">
+<meta name="theme-color" content="#14120E">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* -- Ops Room tokens -- */
+    --ink:#14120E;
+    --panel:#1E1A14;
+    --panel-2:#262019;
+    --line: rgba(255,255,255,0.07);
+    --text: #F2ECDF;
+    --text-dim: #96907F;
+    --accent: #E3A63C;
+    --accent-ink: #1A1200;
+    --lane-live: #E3A63C;
+    --lane-queued: #6FA0AC;
+    --lane-holding: #C97E68;
+    --lane-parked: #756F60;
+
+    --radius-sm: 8px;
+    --radius: 14px;
+    --radius-lg: 20px;
+
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 28px; --sp-7: 40px;
+    --fs-xs: 12px; --fs-sm: 13px; --fs-base: 15px; --fs-md: 17px; --fs-lg: 20px; --fs-xl: 26px; --fs-2xl: 34px;
+
+    --ease: cubic-bezier(0.4,0,0.2,1);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{margin:0; padding:0; background:var(--ink); color:var(--text); font-family:'IBM Plex Sans', sans-serif; height:100%; overscroll-behavior-y: none;}
+  .display{font-family:'Space Grotesk', sans-serif;}
+  .mono{font-family:'IBM Plex Mono', monospace;}
+
+  #app{display:flex; flex-direction:column; height:100vh; height:100dvh; max-width:1100px; margin:0 auto; position:relative;}
+
+  /* HEADER */
+  header{
+    padding: var(--sp-4) var(--sp-5) var(--sp-3);
+    display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid var(--line);
+    flex-shrink:0;
+  }
+  header .brand{display:flex; align-items:center; gap:var(--sp-2);}
+  header .brand svg{width:22px; height:22px; color:var(--accent); flex-shrink:0;}
+  header h1{font-size:var(--fs-md); font-weight:600; margin:0; letter-spacing:0.2px;}
+  header .status{display:flex; align-items:center; gap:var(--sp-2);}
+  header .clock{font-size:var(--fs-xs); color:var(--text-dim);}
+  .blip{position:relative; width:8px; height:8px; border-radius:50%; background:var(--accent); flex-shrink:0;}
+  .blip::after{
+    content:''; position:absolute; inset:-6px; border-radius:50%; border:1px solid var(--accent);
+    opacity:0; animation: sweep-ping 3s ease-out infinite;
+  }
+  @keyframes sweep-ping{
+    0%{ transform:scale(0.4); opacity:0.55; }
+    75%{ transform:scale(1.9); opacity:0; }
+    100%{ transform:scale(1.9); opacity:0; }
+  }
+
+  /* MAIN */
+  main{flex:1; overflow-y:auto; padding: var(--sp-5) var(--sp-4) 96px; -webkit-overflow-scrolling:touch;}
+  .view{display:none; animation: fadeIn 260ms var(--ease);}
+  .view.active{display:block;}
+  @keyframes fadeIn{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);}}
+
+  .section-title{font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:1.2px; color:var(--text-dim); margin: 0 0 var(--sp-3) 2px; font-weight:500;}
+
+  /* CAPTURE */
+  .capture-box{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-lg);
+    padding:var(--sp-4); margin-bottom:var(--sp-6);
+  }
+  textarea{
+    width:100%; background:transparent; border:none; color:var(--text);
+    font-family:'IBM Plex Sans', sans-serif; font-size:var(--fs-md); resize:none; outline:none;
+    min-height:52px; line-height:1.5;
+  }
+  textarea::placeholder{color:var(--text-dim);}
+  .capture-actions{display:flex; justify-content:flex-end; margin-top:var(--sp-2);}
+  .btn{
+    border:none; border-radius:var(--radius-sm); padding:12px 20px; font-size:var(--fs-sm); font-weight:600;
+    cursor:pointer; transition: transform 150ms var(--ease), opacity 150ms;
+    font-family:'IBM Plex Sans', sans-serif; min-height:44px;
+  }
+  .btn:active{transform:scale(0.96);}
+  .btn-primary{background:var(--accent); color:var(--accent-ink);}
+  .btn-ghost{background:transparent; color:var(--text-dim); border:1px solid var(--line);}
+
+  .queue-item{
+    display:flex; align-items:flex-start; gap:var(--sp-3);
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:var(--sp-4); margin-bottom:var(--sp-2);
+  }
+  .queue-item .txt{flex:1; font-size:var(--fs-base); line-height:1.5;}
+  .queue-item .meta{font-size:var(--fs-xs); color:var(--text-dim); margin-top:var(--sp-1);}
+  .chip-row{display:flex; gap:var(--sp-2); flex-wrap:wrap; margin-top:var(--sp-3);}
+  .chip{
+    font-size:var(--fs-xs); padding:9px 14px; border-radius:20px; border:1px solid var(--line);
+    background:var(--panel-2); color:var(--text-dim); cursor:pointer; font-weight:500;
+    transition: all 150ms var(--ease); min-height:32px; display:inline-flex; align-items:center;
+  }
+  .chip:active{transform:scale(0.94);}
+  .chip.live{border-color:var(--lane-live); color:var(--lane-live);}
+  .chip.queued{border-color:var(--lane-queued); color:var(--lane-queued);}
+  .chip.holding{border-color:var(--lane-holding); color:var(--lane-holding);}
+  .chip.parked{border-color:var(--lane-parked); color:var(--lane-parked);}
+  .empty{color:var(--text-dim); font-size:var(--fs-sm); padding:var(--sp-6) var(--sp-2); text-align:center; display:flex; flex-direction:column; align-items:center; gap:var(--sp-2);}
+  .empty svg{width:28px; height:28px; opacity:0.35;}
+
+  /* BOARD */
+  .board-scroller{display:flex; gap:var(--sp-3); overflow-x:auto; padding-bottom:var(--sp-2); margin: 0 calc(-1 * var(--sp-4)); padding-left:var(--sp-4); padding-right:var(--sp-4); scroll-snap-type:x mandatory;}
+  .column{
+    min-width:80%; scroll-snap-align:start; flex-shrink:0;
+    background:var(--panel); border-radius:var(--radius-lg); border:1px solid var(--line);
+    padding:var(--sp-4); max-height: calc(100vh - 260px); display:flex; flex-direction:column;
+  }
+  @media(min-width:768px){ .column{min-width: 46%;} }
+  @media(min-width:1024px){ .board-scroller{flex-wrap:wrap;} .column{min-width: 23%;} }
+  .col-head{display:flex; align-items:center; gap:var(--sp-2); margin-bottom:var(--sp-3);}
+  .col-bar{width:4px; height:16px; border-radius:2px;}
+  .col-bar.live{background:var(--lane-live);} .col-bar.queued{background:var(--lane-queued);}
+  .col-bar.holding{background:var(--lane-holding);} .col-bar.parked{background:var(--lane-parked);}
+  .col-title{font-weight:600; font-size:var(--fs-base);}
+  .col-count{margin-left:auto; font-size:var(--fs-xs); color:var(--text-dim);}
+  .col-body{overflow-y:auto; flex:1;}
+  .task-card{
+    background:var(--panel-2); border-radius:10px; padding:var(--sp-3); margin-bottom:var(--sp-2);
+    font-size:var(--fs-sm); line-height:1.45; border-left:3px solid transparent;
+  }
+  .task-card.live{border-left-color:var(--lane-live);}
+  .task-card.queued{border-left-color:var(--lane-queued);}
+  .task-card.holding{border-left-color:var(--lane-holding);}
+  .task-card.parked{border-left-color:var(--lane-parked);}
+  .task-card .row-actions{display:flex; gap:var(--sp-2); flex-wrap:wrap; margin-top:var(--sp-2);}
+  .mini-btn{font-size:var(--fs-xs); padding:6px 10px; border-radius:8px; background:transparent; border:1px solid var(--line); color:var(--text-dim); cursor:pointer; min-height:30px;}
+
+  /* SIGNAL */
+  .insight-form{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-lg); padding:var(--sp-4); margin-bottom:var(--sp-5);}
+  select, input[type=text]{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:var(--radius-sm); padding:12px 14px; font-size:var(--fs-base); font-family:'IBM Plex Sans'; margin-bottom:var(--sp-2); outline:none; min-height:44px;
+  }
+  .insight-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:var(--sp-4); margin-bottom:var(--sp-2);
+  }
+  .src-tag{font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:0.6px; color:var(--lane-queued); font-weight:600;}
+  .insight-card p{margin:var(--sp-2) 0 var(--sp-1); font-size:var(--fs-base); line-height:1.55;}
+  .insight-card .ref{font-size:var(--fs-xs); color:var(--text-dim);}
+
+  /* PULSE */
+  .stat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:var(--sp-3); margin-bottom:var(--sp-6);}
+  .stat-card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-lg); padding:var(--sp-4); position:relative; overflow:hidden;}
+  .stat-card svg.sweep{position:absolute; right:-10px; top:-10px; width:64px; height:64px; opacity:0.08; color:var(--accent); pointer-events:none;}
+  .stat-num{font-family:'Space Grotesk'; font-size:var(--fs-2xl); font-weight:700; position:relative;}
+  .stat-label{font-size:var(--fs-xs); color:var(--text-dim); margin-top:var(--sp-1); position:relative;}
+  .weekly-log{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-lg); padding:var(--sp-4);}
+  .weekly-log label{font-size:var(--fs-xs); color:var(--text-dim); display:block; margin:var(--sp-3) 0 var(--sp-1);}
+  .weekly-log label:first-child{margin-top:0;}
+  .log-entry{border-top:1px solid var(--line); padding-top:var(--sp-3); margin-top:var(--sp-4);}
+  .log-entry .wk{font-size:var(--fs-xs); color:var(--text-dim); margin-bottom:var(--sp-1);}
+  .log-entry .field{font-size:var(--fs-sm); margin-bottom:3px;}
+  .log-entry .field b{color:var(--text-dim); font-weight:500;}
+
+  /* NAV */
+  nav{
+    position:fixed; bottom:0; left:0; right:0; max-width:1100px; margin:0 auto;
+    background: var(--panel);
+    border-top:1px solid var(--line);
+    display:flex; padding: var(--sp-2) var(--sp-2) calc(var(--sp-2) + env(safe-area-inset-bottom));
+  }
+  .nav-btn{
+    flex:1; background:none; border:none; color:var(--text-dim); padding:8px 4px;
+    display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer;
+    font-family:'IBM Plex Sans'; font-size:var(--fs-xs); transition: color 150ms var(--ease); min-height:44px;
+  }
+  .nav-btn.active{color:var(--accent);}
+  .nav-btn svg{width:20px; height:20px;}
+  .nav-btn:active{transform:scale(0.94);}
+
+  ::-webkit-scrollbar{display:none;}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-scope" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 12 L12 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="15.2" cy="8.6" r="1.6" fill="currentColor"/></symbol>
+  <symbol id="i-capture" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v6M9 12h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-board" viewBox="0 0 24 24"><rect x="4" y="9" width="4" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="10" y="4" width="4" height="16" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="16" y="12" width="4" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-signal" viewBox="0 0 24 24"><path d="M8.5 17a6 6 0 0 1 0-10M15.5 7a6 6 0 0 1 0 10M5.5 19.5a10 10 0 0 1 0-15M18.5 4.5a10 10 0 0 1 0 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></symbol>
+  <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l2-6 3 12 2-8 2 4h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<div id="app">
+  <header>
+    <div class="brand">
+      <svg><use href="#i-scope"/></svg>
+      <h1 class="display">Command Deck</h1>
+    </div>
+    <div class="status">
+      <div class="clock mono" id="clock"></div>
+      <div class="blip"></div>
+    </div>
+  </header>
+
+  <main>
+    <!-- CAPTURE -->
+    <section class="view active" id="view-capture">
+      <div class="capture-box">
+        <textarea id="captureInput" placeholder="What's on your mind? Just dump it here..." rows="2"></textarea>
+        <div class="capture-actions">
+          <button class="btn btn-primary" onclick="addCapture()">Log it</button>
+        </div>
+      </div>
+      <div class="section-title">Untriaged</div>
+      <div id="queueList"></div>
+    </section>
+
+    <!-- BOARD -->
+    <section class="view" id="view-board">
+      <div class="section-title">The Board — swipe to browse</div>
+      <div class="board-scroller" id="boardScroller"></div>
+    </section>
+
+    <!-- SIGNAL -->
+    <section class="view" id="view-signal">
+      <div class="insight-form">
+        <select id="insightSource">
+          <option>Customer Call</option>
+          <option>Support Ticket</option>
+          <option>Sales Feedback</option>
+          <option>Internal Stakeholder</option>
+          <option>Data/Analytics</option>
+          <option>Other</option>
+        </select>
+        <textarea id="insightText" placeholder="What did you learn?" rows="2"></textarea>
+        <input type="text" id="insightRef" placeholder="Link or reference (optional)">
+        <div class="capture-actions">
+          <button class="btn btn-primary" onclick="addInsight()">Log signal</button>
+        </div>
+      </div>
+      <div class="section-title">Recent signals</div>
+      <div id="insightList"></div>
+    </section>
+
+    <!-- PULSE -->
+    <section class="view" id="view-pulse">
+      <div class="section-title">This week</div>
+      <div class="stat-grid" id="statGrid"></div>
+
+      <div class="section-title">Weekly reality check</div>
+      <div class="weekly-log">
+        <label>What shipped</label>
+        <input type="text" id="wkShipped" placeholder="e.g. Onboarding v2 went live">
+        <label>What's stuck</label>
+        <input type="text" id="wkStuck" placeholder="e.g. Waiting on legal review">
+        <label>What surprised me</label>
+        <input type="text" id="wkSurprise" placeholder="e.g. Pricing drove churn, not usability">
+        <div class="capture-actions">
+          <button class="btn btn-primary" onclick="addWeekly()">Save entry</button>
+        </div>
+        <div id="weeklyList"></div>
+      </div>
+    </section>
+  </main>
+
+  <nav>
+    <button class="nav-btn active" data-view="capture" onclick="navTap('capture')">
+      <svg><use href="#i-capture"/></svg>
+      Capture
+    </button>
+    <button class="nav-btn" data-view="board" onclick="navTap('board')">
+      <svg><use href="#i-board"/></svg>
+      Board
+    </button>
+    <button class="nav-btn" data-view="signal" onclick="navTap('signal')">
+      <svg><use href="#i-signal"/></svg>
+      Signal
+    </button>
+    <button class="nav-btn" data-view="pulse" onclick="navTap('pulse')">
+      <svg><use href="#i-pulse"/></svg>
+      Pulse
+    </button>
+  </nav>
+</div>
+
+<script>
+let state = { tasks: [], insights: [], weekly: [] };
+
+const DB_NAME = 'command-deck';
+const DB_VERSION = 1;
+const STORE = 'kv';
+
+let dbPromise = null;
+function openDB(){
+  if (!dbPromise) {
+    dbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => { req.result.createObjectStore(STORE); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  return dbPromise;
+}
+
+async function idbGet(key){
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbSet(key, value){
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function loadState(){
+  const [tasks, insights, weekly] = await Promise.allSettled([
+    idbGet('cd-tasks'), idbGet('cd-insights'), idbGet('cd-weekly')
+  ]);
+  state.tasks = tasks.status === 'fulfilled' ? (tasks.value || []) : [];
+  state.insights = insights.status === 'fulfilled' ? (insights.value || []) : [];
+  state.weekly = weekly.status === 'fulfilled' ? (weekly.value || []) : [];
+  renderAll();
+}
+
+async function saveTasks(){ try{ await idbSet('cd-tasks', state.tasks); }catch(e){ console.error(e); } }
+async function saveInsights(){ try{ await idbSet('cd-insights', state.insights); }catch(e){ console.error(e); } }
+async function saveWeekly(){ try{ await idbSet('cd-weekly', state.weekly); }catch(e){ console.error(e); } }
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function timeAgo(ts){
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff/60000);
+  if(mins < 1) return 'just now';
+  if(mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins/60);
+  if(hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs/24);
+  return days + 'd ago';
+}
+
+const VIEWS = ['capture','board','signal','pulse'];
+
+function switchView(v){
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-' + v).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(el => el.classList.toggle('active', el.dataset.view === v));
+  history.replaceState(null, '', '#' + v);
+}
+
+function navTap(v){
+  switchView(v);
+  if(navigator.vibrate) navigator.vibrate(8);
+}
+
+function routeFromHash(){
+  const v = location.hash.slice(1);
+  switchView(VIEWS.includes(v) ? v : 'capture');
+}
+window.addEventListener('hashchange', routeFromHash);
+
+async function addCapture(){
+  const input = document.getElementById('captureInput');
+  const text = input.value.trim();
+  if(!text) return;
+  state.tasks.unshift({ id: uid(), text, status: null, note: '', ts: Date.now() });
+  input.value = '';
+  await saveTasks();
+  renderQueue(); renderBoard(); renderStats();
+}
+
+async function setStatus(id, status){
+  const t = state.tasks.find(x => x.id === id);
+  if(t){ t.status = status; await saveTasks(); renderQueue(); renderBoard(); renderStats(); }
+  if(navigator.vibrate) navigator.vibrate(12);
+}
+
+async function addInsight(){
+  const source = document.getElementById('insightSource').value;
+  const text = document.getElementById('insightText').value.trim();
+  const ref = document.getElementById('insightRef').value.trim();
+  if(!text) return;
+  state.insights.unshift({ id: uid(), source, text, ref, ts: Date.now() });
+  document.getElementById('insightText').value = '';
+  document.getElementById('insightRef').value = '';
+  await saveInsights();
+  renderInsights(); renderStats();
+}
+
+async function addWeekly(){
+  const shipped = document.getElementById('wkShipped').value.trim();
+  const stuck = document.getElementById('wkStuck').value.trim();
+  const surprise = document.getElementById('wkSurprise').value.trim();
+  if(!shipped && !stuck && !surprise) return;
+  const now = new Date();
+  state.weekly.unshift({ id: uid(), week: now.toLocaleDateString(undefined,{month:'short',day:'numeric'}), shipped, stuck, surprise, ts: Date.now() });
+  document.getElementById('wkShipped').value = '';
+  document.getElementById('wkStuck').value = '';
+  document.getElementById('wkSurprise').value = '';
+  await saveWeekly();
+  renderWeekly();
+}
+
+function renderQueue(){
+  const el = document.getElementById('queueList');
+  const untriaged = state.tasks.filter(t => !t.status);
+  if(untriaged.length === 0){ el.innerHTML = '<div class="empty"><svg><use href="#i-scope"/></svg>Queue is clear. Nice.</div>'; return; }
+  el.innerHTML = untriaged.map(t => `
+    <div class="queue-item">
+      <div style="flex:1">
+        <div class="txt">${escapeHtml(t.text)}</div>
+        <div class="meta mono">${timeAgo(t.ts)}</div>
+        <div class="chip-row">
+          <div class="chip live" onclick="setStatus('${t.id}','live')">Live</div>
+          <div class="chip queued" onclick="setStatus('${t.id}','queued')">Queued</div>
+          <div class="chip holding" onclick="setStatus('${t.id}','holding')">Holding</div>
+          <div class="chip parked" onclick="setStatus('${t.id}','parked')">Parked</div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderBoard(){
+  const cols = [
+    {key:'live', label:'Live'}, {key:'queued', label:'Queued'},
+    {key:'holding', label:'Holding'}, {key:'parked', label:'Parked'}
+  ];
+  const el = document.getElementById('boardScroller');
+  el.innerHTML = cols.map(c => {
+    const items = state.tasks.filter(t => t.status === c.key);
+    return `
+      <div class="column">
+        <div class="col-head">
+          <div class="col-bar ${c.key}"></div>
+          <div class="col-title">${c.label}</div>
+          <div class="col-count mono">${items.length}</div>
+        </div>
+        <div class="col-body">
+          ${items.length === 0 ? '<div class="empty">Empty</div>' : items.map(t => `
+            <div class="task-card ${c.key}">
+              ${escapeHtml(t.text)}
+              <div class="row-actions">
+                ${cols.filter(x=>x.key!==c.key).map(x => `<button class="mini-btn" onclick="setStatus('${t.id}','${x.key}')">${x.label}</button>`).join('')}
+                <button class="mini-btn" onclick="removeTask('${t.id}')">Done</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function removeTask(id){
+  state.tasks = state.tasks.filter(t => t.id !== id);
+  await saveTasks();
+  renderBoard(); renderQueue(); renderStats();
+  if(navigator.vibrate) navigator.vibrate([8,20,8]);
+}
+
+function renderInsights(){
+  const el = document.getElementById('insightList');
+  if(state.insights.length === 0){ el.innerHTML = '<div class="empty"><svg><use href="#i-signal"/></svg>No signals logged yet.</div>'; return; }
+  el.innerHTML = state.insights.slice(0,50).map(i => `
+    <div class="insight-card">
+      <div class="src-tag">${escapeHtml(i.source)} · ${timeAgo(i.ts)}</div>
+      <p>${escapeHtml(i.text)}</p>
+      ${i.ref ? `<div class="ref mono">${escapeHtml(i.ref)}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderWeekly(){
+  const el = document.getElementById('weeklyList');
+  el.innerHTML = state.weekly.slice(0,10).map(w => `
+    <div class="log-entry">
+      <div class="wk mono">${w.week}</div>
+      ${w.shipped ? `<div class="field"><b>Shipped:</b> ${escapeHtml(w.shipped)}</div>` : ''}
+      ${w.stuck ? `<div class="field"><b>Stuck:</b> ${escapeHtml(w.stuck)}</div>` : ''}
+      ${w.surprise ? `<div class="field"><b>Surprised:</b> ${escapeHtml(w.surprise)}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderStats(){
+  const el = document.getElementById('statGrid');
+  const live = state.tasks.filter(t=>t.status==='live').length;
+  const queued = state.tasks.filter(t=>t.status==='queued').length;
+  const holding = state.tasks.filter(t=>t.status==='holding').length;
+  const weekAgo = Date.now() - 7*24*60*60*1000;
+  const signals = state.insights.filter(i => i.ts > weekAgo).length;
+  const stats = [
+    {n: live, l:'Live'}, {n: queued, l:'Queued'},
+    {n: holding, l:'Holding on others'}, {n: signals, l:'Signals this week'}
+  ];
+  el.innerHTML = stats.map(s => `
+    <div class="stat-card">
+      <svg class="sweep"><use href="#i-scope"/></svg>
+      <div class="stat-num">${s.n}</div>
+      <div class="stat-label">${s.l}</div>
+    </div>
+  `).join('');
+}
+
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function renderAll(){
+  renderQueue(); renderBoard(); renderInsights(); renderWeekly(); renderStats();
+}
+
+function tickClock(){
+  const el = document.getElementById('clock');
+  const d = new Date();
+  el.textContent = d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'});
+}
+tickClock();
+setInterval(tickClock, 30000);
+
+routeFromHash();
+loadState();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(e => console.error('SW registration failed', e));
+  });
+}
+</script>
+</body>
+</html>
