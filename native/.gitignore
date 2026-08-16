@@ -9,6 +9,10 @@
 .externalNativeBuild
 .cxx
 
-# Real signing key — generated locally with `keytool`/`bubblewrap`, never committed.
-# Mirrors the arthquest Android repo's own convention (see native/README.md).
+# Real signing key + its passwords — generated locally with `keytool`, never committed.
+# Mirrors arthquest-pwa's own android/ convention (see native/README.md). *.keystore is a
+# defense-in-depth catch-all in case one ever gets created outside keystore/ by mistake — the
+# documented location is always native/keystore/release.keystore.
+/keystore/
 *.keystore
+*.keystore.properties

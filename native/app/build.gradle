@@ -20,6 +20,40 @@ plugins {
     id 'com.android.application'
 }
 
+// Stable release-signing keystore. This repo is public, so the keystore + its passwords are NOT
+// committed — CI decodes them from GitHub Actions secrets at build time (see
+// .github/workflows/android-release.yml and the ANDROID_KEYSTORE_* env vars below). For an
+// optional locally-signed dev build, drop a keystore at keystore/release.keystore plus a
+// keystore/release.keystore.properties file (storePassword=/keyAlias=/keyPassword=) — both paths
+// are gitignored, never commit either one. Whichever key ends up used, it must stay the SAME key
+// forever: a different signing key on a future build makes Android refuse to install it as an
+// update over the existing app, forcing an uninstall/reinstall.
+def keystorePropertiesFile = rootProject.file('keystore/release.keystore.properties')
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+// rootProject.file() on both branches (not the bare, app-module-relative file()) so a relative
+// ANDROID_KEYSTORE_PATH resolves the same way the documented default keystore location does — CI
+// always passes an absolute path (/tmp/release.keystore) so this doesn't change its behavior,
+// only makes a hypothetical relative override behave predictably.
+def androidKeystorePathEnv = System.getenv('ANDROID_KEYSTORE_PATH')
+def releaseStoreFile = rootProject.file(androidKeystorePathEnv ?: 'keystore/release.keystore')
+def releaseStorePassword = System.getenv('ANDROID_KEYSTORE_STORE_PASSWORD') ?: keystoreProperties['storePassword']
+def releaseKeyAlias = System.getenv('ANDROID_KEYSTORE_KEY_ALIAS') ?: keystoreProperties['keyAlias']
+def releaseKeyPassword = System.getenv('ANDROID_KEYSTORE_KEY_PASSWORD') ?: keystoreProperties['keyPassword']
+def hasReleaseSigning = releaseStoreFile.exists() && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
+// Android only installs a new APK as an update (rather than refusing it) when its versionCode is
+// strictly higher than the currently-installed one. CI sets ANDROID_VERSION_CODE to the
+// (monotonically increasing, never-reused) GitHub Actions run number for every release build;
+// local/dev builds fall back to 1 since they're never what a real device is updating from.
+// NOTE: `versionCode <expr>` below must not start with a literal '(' right after the method
+// name — Groovy's command-chain parsing would then read `versionCode(...)` as a full call on its
+// own, evaluated (on the raw String, before .toInteger() ever runs) before a trailing
+// `.toInteger()` is applied as a separate postfix call on that return value, throwing an NPE at
+// configuration time. Routing through this variable avoids a leading '(' and sidesteps it.
+def androidVersionCode = System.getenv('ANDROID_VERSION_CODE') ?: '1'
+
 def twaManifest = [
     applicationId: 'io.github.axarl007.commanddeck',
     hostName: 'axarl007.github.io', // The domain being opened in the TWA.
@@ -57,8 +91,12 @@ android {
         applicationId "io.github.axarl007.commanddeck"
         minSdkVersion 21
         targetSdkVersion 36
-        versionCode 1
-        versionName "1"
+        // See the Groovy command-chain parsing note on androidVersionCode above — routing
+        // through that variable avoids a leading '(' right after versionCode here, which would
+        // otherwise make Groovy read this as its own full call, evaluated before .toInteger()
+        // ever runs.
+        versionCode androidVersionCode.toInteger()
+        versionName "1.0." + androidVersionCode
 
         // The name for the application
         resValue "string", "appName", twaManifest.name
@@ -150,9 +188,22 @@ android {
 
         
     }
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile releaseStoreFile
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled true
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     compileOptions {
