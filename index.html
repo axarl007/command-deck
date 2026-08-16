@@ -23,11 +23,11 @@
     --text-dim: #96907F;
     --accent: #E3A63C;
     --accent-ink: #1A1200;
-    --lane-live: #E3A63C;
-    --lane-queued: #6FA0AC;
-    --lane-holding: #C97E68;
-    --lane-parked: #756F60;
-    --lane-archived: #8A7F9C;
+    --danger: #C97E68;
+    --lane-today: #E3A63C;
+    --lane-week: #6FA0AC;
+    --lane-someday: #756F60;
+    --lane-done: #8A7F9C;
 
     --radius-sm: 8px;
     --radius: 14px;
@@ -87,7 +87,7 @@
     min-height:52px; line-height:1.5;
   }
   textarea::placeholder{color:var(--text-dim);}
-  .field-error{outline:2px solid var(--lane-holding); outline-offset:2px;}
+  .field-error{outline:2px solid var(--danger); outline-offset:2px;}
   .capture-actions{display:flex; justify-content:flex-end; margin-top:var(--sp-2);}
   .btn{
     border:none; border-radius:var(--radius-sm); padding:12px 20px; font-size:var(--fs-sm); font-weight:600;
@@ -112,10 +112,9 @@
     transition: all 150ms var(--ease); min-height:32px; display:inline-flex; align-items:center;
   }
   .chip:active{transform:scale(0.94);}
-  .chip.live{border-color:var(--lane-live); color:var(--lane-live);}
-  .chip.queued{border-color:var(--lane-queued); color:var(--lane-queued);}
-  .chip.holding{border-color:var(--lane-holding); color:var(--lane-holding);}
-  .chip.parked{border-color:var(--lane-parked); color:var(--lane-parked);}
+  .chip.today{border-color:var(--lane-today); color:var(--lane-today);}
+  .chip.week{border-color:var(--lane-week); color:var(--lane-week);}
+  .chip.someday{border-color:var(--lane-someday); color:var(--lane-someday);}
   .empty{color:var(--text-dim); font-size:var(--fs-sm); padding:var(--sp-6) var(--sp-2); text-align:center; display:flex; flex-direction:column; align-items:center; gap:var(--sp-2);}
   .empty svg{width:28px; height:28px; opacity:0.35;}
   .item-actions{display:flex; justify-content:flex-end; margin-top:var(--sp-2);}
@@ -128,11 +127,10 @@
     background:var(--panel-2); color:var(--text-dim); cursor:pointer; font-weight:500;
     min-height:32px; transition:all 150ms var(--ease);
   }
-  .lane-pill.live{--lane-color:var(--lane-live);}
-  .lane-pill.queued{--lane-color:var(--lane-queued);}
-  .lane-pill.holding{--lane-color:var(--lane-holding);}
-  .lane-pill.parked{--lane-color:var(--lane-parked);}
-  .lane-pill.archived{--lane-color:var(--lane-archived);}
+  .lane-pill.today{--lane-color:var(--lane-today);}
+  .lane-pill.week{--lane-color:var(--lane-week);}
+  .lane-pill.someday{--lane-color:var(--lane-someday);}
+  .lane-pill.done{--lane-color:var(--lane-done);}
   .lane-pill.active{border-color:var(--lane-color); color:var(--lane-color); background:var(--panel);}
   .board-scroller{display:flex; gap:var(--sp-3); flex-wrap:wrap;}
   .column{
@@ -144,9 +142,8 @@
   @media(min-width:1024px){ .column{display:flex; width:23%; max-height: calc(100vh - 260px);} }
   .col-head{display:flex; align-items:center; gap:var(--sp-2); margin-bottom:var(--sp-3);}
   .col-bar{width:4px; height:16px; border-radius:2px;}
-  .col-bar.live{background:var(--lane-live);} .col-bar.queued{background:var(--lane-queued);}
-  .col-bar.holding{background:var(--lane-holding);} .col-bar.parked{background:var(--lane-parked);}
-  .col-bar.archived{background:var(--lane-archived);}
+  .col-bar.today{background:var(--lane-today);} .col-bar.week{background:var(--lane-week);}
+  .col-bar.someday{background:var(--lane-someday);} .col-bar.done{background:var(--lane-done);}
   .col-title{font-weight:600; font-size:var(--fs-base);}
   .col-count{margin-left:auto; font-size:var(--fs-xs); color:var(--text-dim);}
   .col-body{overflow-y:auto; flex:1;}
@@ -154,14 +151,13 @@
     background:var(--panel-2); border-radius:10px; padding:var(--sp-3); margin-bottom:var(--sp-2);
     font-size:var(--fs-sm); line-height:1.45; border-left:3px solid transparent; word-break:break-word;
   }
-  .task-card.live{border-left-color:var(--lane-live);}
-  .task-card.queued{border-left-color:var(--lane-queued);}
-  .task-card.holding{border-left-color:var(--lane-holding);}
-  .task-card.parked{border-left-color:var(--lane-parked);}
-  .task-card.archived{border-left-color:var(--lane-archived);}
+  .task-card.today{border-left-color:var(--lane-today);}
+  .task-card.week{border-left-color:var(--lane-week);}
+  .task-card.someday{border-left-color:var(--lane-someday);}
+  .task-card.done{border-left-color:var(--lane-done);}
   .task-card .row-actions{display:flex; gap:var(--sp-2); flex-wrap:wrap; margin-top:var(--sp-2);}
   .mini-btn{font-size:var(--fs-xs); padding:6px 10px; border-radius:8px; background:transparent; border:1px solid var(--line); color:var(--text-dim); cursor:pointer; min-height:30px;}
-  .mini-btn.danger{color:var(--lane-holding); border-color:var(--lane-holding);}
+  .mini-btn.danger{color:var(--danger); border-color:var(--danger);}
 
   /* SIGNAL */
   .insight-form{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-lg); padding:var(--sp-4); margin-bottom:var(--sp-5);}
@@ -172,7 +168,7 @@
   .insight-card{
     background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:var(--sp-4); margin-bottom:var(--sp-2);
   }
-  .src-tag{font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:0.6px; color:var(--lane-queued); font-weight:600;}
+  .src-tag{font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:0.6px; color:var(--lane-week); font-weight:600;}
   .insight-card p{margin:var(--sp-2) 0 var(--sp-1); font-size:var(--fs-base); line-height:1.55;}
   .insight-card .ref{font-size:var(--fs-xs); color:var(--text-dim);}
 
@@ -463,10 +459,7 @@ function renderQueue(){
         <div class="txt">${escapeHtml(t.text)}</div>
         <div class="meta mono">${timeAgo(t.ts)}</div>
         <div class="chip-row">
-          <div class="chip live" onclick="setStatus('${t.id}','live')">Live</div>
-          <div class="chip queued" onclick="setStatus('${t.id}','queued')">Queued</div>
-          <div class="chip holding" onclick="setStatus('${t.id}','holding')">Holding</div>
-          <div class="chip parked" onclick="setStatus('${t.id}','parked')">Parked</div>
+          ${LANES.filter(l => l.key !== 'done').map(l => `<div class="chip ${l.key}" onclick="setStatus('${t.id}','${l.key}')">${l.label}</div>`).join('')}
         </div>
         <div class="item-actions">
           <button class="mini-btn danger" onclick="deleteTask('${t.id}')">Delete</button>
@@ -477,11 +470,10 @@ function renderQueue(){
 }
 
 const LANES = [
-  {key:'live', label:'Live'}, {key:'queued', label:'Queued'},
-  {key:'holding', label:'Holding'}, {key:'parked', label:'Parked'},
-  {key:'archived', label:'Archived'}
+  {key:'today', label:'Today'}, {key:'week', label:'Week'},
+  {key:'someday', label:'Someday'}, {key:'done', label:'Done'}
 ];
-let boardActiveLane = 'live';
+let boardActiveLane = 'today';
 
 function selectLane(key){
   boardActiveLane = key;
@@ -500,14 +492,14 @@ function renderBoard(){
   renderLanePills();
   const el = document.getElementById('boardScroller');
   el.innerHTML = LANES.map(c => {
-    const items = c.key === 'archived'
+    const items = c.key === 'done'
       ? state.tasks.filter(t => t.archived)
       : state.tasks.filter(t => t.status === c.key && !t.archived);
-    const actionsFor = (t) => c.key === 'archived'
+    const actionsFor = (t) => c.key === 'done'
       ? `<button class="mini-btn" onclick="restoreTask('${t.id}')">Restore</button>
          <button class="mini-btn danger" onclick="deleteTask('${t.id}')">Delete</button>`
-      : `${LANES.filter(x => x.key !== c.key && x.key !== 'archived').map(x => `<button class="mini-btn" onclick="setStatus('${t.id}','${x.key}')">${x.label}</button>`).join('')}
-         <button class="mini-btn" onclick="archiveTask('${t.id}')">Archive</button>
+      : `${LANES.filter(x => x.key !== c.key && x.key !== 'done').map(x => `<button class="mini-btn" onclick="setStatus('${t.id}','${x.key}')">${x.label}</button>`).join('')}
+         <button class="mini-btn" onclick="archiveTask('${t.id}')">Done</button>
          <button class="mini-btn danger" onclick="deleteTask('${t.id}')">Delete</button>`;
     return `
       <div class="column ${c.key} ${c.key === boardActiveLane ? 'lane-active' : ''}">
@@ -596,14 +588,14 @@ async function deleteWeekly(id){
 
 function renderStats(){
   const el = document.getElementById('statGrid');
-  const live = state.tasks.filter(t=>t.status==='live' && !t.archived).length;
-  const queued = state.tasks.filter(t=>t.status==='queued' && !t.archived).length;
-  const holding = state.tasks.filter(t=>t.status==='holding' && !t.archived).length;
+  const today = state.tasks.filter(t=>t.status==='today' && !t.archived).length;
+  const week = state.tasks.filter(t=>t.status==='week' && !t.archived).length;
+  const someday = state.tasks.filter(t=>t.status==='someday' && !t.archived).length;
   const weekAgo = Date.now() - 7*24*60*60*1000;
   const signals = state.insights.filter(i => i.ts > weekAgo).length;
   const stats = [
-    {n: live, l:'Live'}, {n: queued, l:'Queued'},
-    {n: holding, l:'Holding on others'}, {n: signals, l:'Signals this week'}
+    {n: today, l:'Today'}, {n: week, l:'This week'},
+    {n: someday, l:'Someday'}, {n: signals, l:'Signals this week'}
   ];
   el.innerHTML = stats.map(s => `
     <div class="stat-card">
