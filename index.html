@@ -168,6 +168,7 @@
   .task-card.week{border-left-color:var(--lane-week);}
   .task-card.someday{border-left-color:var(--lane-someday);}
   .task-card.done{border-left-color:var(--lane-done);}
+  .card-age{font-size:var(--fs-xs); color:var(--text-dim); margin-top:var(--sp-1);}
   .task-card .row-actions{display:flex; gap:var(--sp-2); flex-wrap:wrap; margin-top:var(--sp-2);}
   .mini-btn{font-size:var(--fs-xs); padding:6px 10px; border-radius:8px; background:transparent; border:1px solid var(--line); color:var(--text-dim); cursor:pointer; min-height:30px;}
   .mini-btn.danger{color:var(--danger); border-color:var(--danger);}
@@ -188,6 +189,10 @@
   .insight-card .ref{font-size:var(--fs-xs); color:var(--text-dim);}
 
   /* PULSE */
+  .review-item{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:var(--sp-4); margin-bottom:var(--sp-2);}
+  .review-item .txt{font-size:var(--fs-base); line-height:1.5;}
+  .review-item .meta{font-size:var(--fs-xs); color:var(--text-dim); margin:var(--sp-1) 0 var(--sp-2);}
+  .review-actions{display:flex; gap:var(--sp-2); flex-wrap:wrap;}
   .stat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:var(--sp-3); margin-bottom:var(--sp-6);}
   .stat-card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-lg); padding:var(--sp-4); position:relative; overflow:hidden;}
   .stat-card svg.sweep{position:absolute; right:-10px; top:-10px; width:64px; height:64px; opacity:0.08; color:var(--accent); pointer-events:none;}
@@ -287,6 +292,9 @@
     <section class="view" id="view-pulse">
       <div class="section-title">This week</div>
       <div class="stat-grid" id="statGrid"></div>
+
+      <div class="section-title">Someday review</div>
+      <div id="somedayReview"></div>
 
       <div class="section-title">Weekly reality check</div>
       <div class="weekly-log">
@@ -396,6 +404,14 @@ function timeAgo(ts){
   return days + 'd ago';
 }
 
+function laneAge(ts){
+  if(!ts) return '';
+  const days = Math.floor((Date.now() - ts) / 86400000);
+  if(days < 1) return 'today';
+  if(days < 7) return days + 'd';
+  return Math.floor(days/7) + 'w';
+}
+
 const VIEWS = ['capture','board','signal','pulse'];
 
 function switchView(v){
@@ -420,7 +436,7 @@ async function addCapture(){
   const input = document.getElementById('captureInput');
   const text = input.value.trim();
   if(!text){ flagInvalid(input); return; }
-  state.tasks.unshift({ id: uid(), text, status: null, archived: false, flagged: false, note: '', ts: Date.now() });
+  state.tasks.unshift({ id: uid(), text, status: null, archived: false, flagged: false, laneEnteredAt: null, note: '', ts: Date.now() });
   input.value = '';
   await saveTasks();
   renderQueue(); renderBoard(); renderStats();
@@ -428,7 +444,7 @@ async function addCapture(){
 
 async function setStatus(id, status){
   const t = state.tasks.find(x => x.id === id);
-  if(t){ t.status = status; await saveTasks(); renderQueue(); renderBoard(); renderStats(); }
+  if(t){ t.status = status; t.laneEnteredAt = Date.now(); await saveTasks(); renderQueue(); renderBoard(); renderStats(); renderSomedayReview(); }
   if(navigator.vibrate) navigator.vibrate(12);
 }
 
@@ -529,6 +545,7 @@ function renderBoard(){
           ${items.length === 0 ? '<div class="empty">Empty</div>' : items.map(t => `
             <div class="task-card ${c.key}">
               ${t.flagged ? '<span class="flag-dot"></span>' : ''}${escapeHtml(t.text)}
+              ${c.key === 'someday' ? `<div class="card-age mono">${laneAge(t.laneEnteredAt)} in Someday</div>` : ''}
               <div class="row-actions">
                 ${actionsFor(t)}
               </div>
@@ -542,20 +559,20 @@ function renderBoard(){
 
 async function archiveTask(id){
   const t = state.tasks.find(x => x.id === id);
-  if(t){ t.archived = true; t.flagged = false; await saveTasks(); renderBoard(); renderQueue(); renderStats(); renderNowStrip(); }
+  if(t){ t.archived = true; t.flagged = false; await saveTasks(); renderBoard(); renderQueue(); renderStats(); renderNowStrip(); renderSomedayReview(); }
   if(navigator.vibrate) navigator.vibrate([8,20,8]);
 }
 
 async function restoreTask(id){
   const t = state.tasks.find(x => x.id === id);
-  if(t){ t.archived = false; await saveTasks(); renderBoard(); renderQueue(); renderStats(); }
+  if(t){ t.archived = false; t.laneEnteredAt = Date.now(); await saveTasks(); renderBoard(); renderQueue(); renderStats(); renderSomedayReview(); }
   if(navigator.vibrate) navigator.vibrate(12);
 }
 
 async function deleteTask(id){
   state.tasks = state.tasks.filter(t => t.id !== id);
   await saveTasks();
-  renderBoard(); renderQueue(); renderStats(); renderNowStrip();
+  renderBoard(); renderQueue(); renderStats(); renderNowStrip(); renderSomedayReview();
   if(navigator.vibrate) navigator.vibrate([8,20,8]);
 }
 
@@ -566,10 +583,10 @@ async function toggleFlag(id){
   state.tasks.forEach(x => { x.flagged = false; });
   if(flagging){
     t.flagged = true;
-    if(t.status !== 'today') t.status = 'today';
+    if(t.status !== 'today'){ t.status = 'today'; t.laneEnteredAt = Date.now(); }
   }
   await saveTasks();
-  renderBoard(); renderNowStrip();
+  renderBoard(); renderNowStrip(); renderSomedayReview();
   if(navigator.vibrate) navigator.vibrate(12);
 }
 
@@ -649,6 +666,23 @@ function renderStats(){
   `).join('');
 }
 
+function renderSomedayReview(){
+  const el = document.getElementById('somedayReview');
+  const items = state.tasks.filter(t => t.status === 'someday' && !t.archived);
+  if(items.length === 0){ el.innerHTML = '<div class="empty">Nothing parked in Someday. Nice.</div>'; return; }
+  el.innerHTML = items.map(t => `
+    <div class="review-item">
+      <div class="txt">${escapeHtml(t.text)}</div>
+      <div class="meta mono">${laneAge(t.laneEnteredAt)} in Someday</div>
+      <div class="review-actions">
+        <button class="mini-btn" onclick="setStatus('${t.id}','today')">→ Today</button>
+        <button class="mini-btn" onclick="setStatus('${t.id}','week')">→ Week</button>
+        <button class="mini-btn" onclick="archiveTask('${t.id}')">Kill (Done)</button>
+      </div>
+    </div>
+  `).join('');
+}
+
 function escapeHtml(str){
   const d = document.createElement('div');
   d.textContent = str;
@@ -656,7 +690,7 @@ function escapeHtml(str){
 }
 
 function renderAll(){
-  renderQueue(); renderBoard(); renderInsights(); renderWeekly(); renderStats(); renderNowStrip();
+  renderQueue(); renderBoard(); renderInsights(); renderWeekly(); renderStats(); renderNowStrip(); renderSomedayReview();
 }
 
 function tickClock(){
