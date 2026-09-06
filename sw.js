@@ -1,4 +1,4 @@
-const CACHE_NAME = 'command-deck-v5';
+const CACHE_NAME = 'command-deck-v6';
 const SHARE_CACHE_NAME = 'command-deck-share';
 const APP_SHELL = [
   './index.html',

@@ -714,7 +714,10 @@ async function saveAttachCapture(){
     let metas;
     try {
       metas = await Promise.all(pendingAttachments.map(async (a) => {
-        await idbPutAttachment(a.id, a.file);
+        // Store with the inferred mimeType, not the file's own possibly-empty
+        // one — otherwise reopening it later (viewAttachmentsFor/openBlobUrl)
+        // would inherit the original empty type and mis-serve it.
+        await idbPutAttachment(a.id, new File([a.file], a.file.name, { type: a.mimeType }));
         return { id: a.id, filename: a.file.name, mimeType: a.mimeType, size: a.file.size };
       }));
     } catch(e){
@@ -1072,11 +1075,18 @@ async function readStagedShare(){
   const meta = await metaResp.json();
   const fileIndexes = Array.from({ length: meta.fileCount }, (_, i) => i);
   const files = (await Promise.all(fileIndexes.map(async (i) => {
-    const resp = await cache.match(`file-${i}`);
-    if(!resp) return null;
-    const blob = await resp.blob();
-    const filename = decodeURIComponent(resp.headers.get('X-Filename') || `file-${i}`);
-    return new File([blob], filename, { type: resp.headers.get('Content-Type') || blob.type });
+    try {
+      const resp = await cache.match(`file-${i}`);
+      if(!resp) return null;
+      const blob = await resp.blob();
+      const filename = decodeURIComponent(resp.headers.get('X-Filename') || `file-${i}`);
+      return new File([blob], filename, { type: resp.headers.get('Content-Type') || blob.type });
+    } catch(e){
+      // Don't let one corrupted cache entry abort the rest of the read (or
+      // the cleanup below) — just drop that one file.
+      console.error('Failed to read a staged shared file', e);
+      return null;
+    }
   }))).filter(Boolean);
   // Wipe the whole staging cache, not just the keys this share's meta knows
   // about — its sole purpose is this transient handoff, so a share that
@@ -1090,6 +1100,10 @@ async function readStagedShare(){
     url: (meta.url || '').trim(),
     files
   };
+}
+
+function joinDistinct(values){
+  return values.filter((v, i, arr) => v && arr.indexOf(v) === i).join(' — ');
 }
 
 async function handleIncomingShare(){
@@ -1113,15 +1127,12 @@ async function handleIncomingShare(){
   // text alongside it (e.g. sharing a page sends both), so keep that too
   // rather than silently dropping it.
   const raw = url || text || title;
-  const extra = [url, text, title]
-    .filter(v => v && v !== raw)
-    .filter((v, i, arr) => arr.indexOf(v) === i)
-    .join(' — ');
+  const extra = joinDistinct([url, text, title].filter(v => v !== raw));
 
   if(files.length > 0){
     queueFilesForAttach(files, 'shared');
     if(pendingAttachments.length > 0){
-      const prefill = [url, text, title].filter((v, i, arr) => v && arr.indexOf(v) === i).join(' — ');
+      const prefill = joinDistinct([url, text, title]);
       if(prefill) document.getElementById('attachNote').value = prefill;
       return;
     }
