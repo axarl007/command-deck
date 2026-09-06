@@ -253,6 +253,7 @@
   .attach-meta{flex:1; font-size:var(--fs-sm); min-width:0;}
   .attach-name{word-break:break-word;}
   .attach-error{color:var(--danger); font-size:var(--fs-xs); margin-top:2px;}
+  .share-mark{width:12px; height:12px; color:var(--accent); opacity:0.6; margin-right:4px; vertical-align:-2px; flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -482,6 +483,13 @@ async function saveWeekly(){ try{ await idbSet('cd-weekly', state.weekly); }catc
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
+function makeTask(overrides){
+  return Object.assign({
+    id: uid(), text: '', type: 'text', status: null, archived: false, flagged: false,
+    laneEnteredAt: null, note: '', ts: Date.now()
+  }, overrides);
+}
+
 function isUrl(str){
   try {
     const u = new URL(str);
@@ -495,11 +503,17 @@ function openLinkFor(id){
   if(t) openLink(t.text);
 }
 
+function sourceMark(t){
+  return t.source === 'shared' ? '<svg class="share-mark" aria-label="Shared to Command Deck"><use href="#i-scope"/></svg>' : '';
+}
+
 function renderTaskText(t){
+  const mark = sourceMark(t);
   if(t.type === 'attachment'){
-    return `<button type="button" class="attach-badge" onclick="viewAttachmentsFor('${t.id}')"><svg><use href="#i-attach"/></svg>${escapeHtml(attachmentLabel(t.attachments))}</button>${t.text ? `<div class="meta">${escapeHtml(t.text)}</div>` : ''}`;
+    return `${mark}<button type="button" class="attach-badge" onclick="viewAttachmentsFor('${t.id}')"><svg><use href="#i-attach"/></svg>${escapeHtml(attachmentLabel(t.attachments))}</button>${t.text ? `<div class="meta">${escapeHtml(t.text)}</div>` : ''}`;
   }
-  return escapeHtml(t.text);
+  const noteLine = t.note ? `<div class="meta">${escapeHtml(t.note)}</div>` : '';
+  return `${mark}${escapeHtml(t.text)}${noteLine}`;
 }
 function taskSummaryText(t){
   return t.type === 'attachment' ? attachmentLabel(t.attachments) : t.text;
@@ -603,7 +617,7 @@ async function addCapture(){
   const input = document.getElementById('captureInput');
   const text = input.value.trim();
   if(!text){ flagInvalid(input); return; }
-  state.tasks.unshift({ id: uid(), text, type: isUrl(text) ? 'link' : 'text', status: null, archived: false, flagged: false, laneEnteredAt: null, note: '', ts: Date.now() });
+  state.tasks.unshift(makeTask({ text, type: isUrl(text) ? 'link' : 'text' }));
   input.value = '';
   await saveTasks();
   renderQueue(); renderBoard(); renderStats();
@@ -699,10 +713,7 @@ async function saveAttachCapture(){
       errEl.style.display = 'block';
       return;
     }
-    const task = {
-      id: uid(), text: note, type: 'attachment', attachments: metas,
-      status: null, archived: false, flagged: false, laneEnteredAt: null, note: '', ts: Date.now()
-    };
+    const task = makeTask({ text: note, type: 'attachment', attachments: metas });
     state.tasks.unshift(task);
     const ok = await saveTasks();
     if(!ok){
@@ -1035,8 +1046,32 @@ function tickClock(){
 tickClock();
 setInterval(tickClock, 30000);
 
+async function handleIncomingShare(){
+  const params = new URLSearchParams(location.search);
+  if(!params.has('title') && !params.has('text') && !params.has('url')) return;
+  const urlVal = (params.get('url') || '').trim();
+  const textVal = (params.get('text') || '').trim();
+  const titleVal = (params.get('title') || '').trim();
+  // Prefer the URL as the primary (actionable) content so link detection and
+  // the Open action keep working — but a share can carry separate descriptive
+  // text alongside it (e.g. sharing a page sends both), so keep that too
+  // rather than silently dropping it.
+  const raw = urlVal || textVal || titleVal;
+  const extra = [urlVal, textVal, titleVal]
+    .filter(v => v && v !== raw)
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+    .join(' — ');
+  history.replaceState(null, '', location.pathname + '#capture');
+  if(raw){
+    state.tasks.unshift(makeTask({ text: raw, type: isUrl(raw) ? 'link' : 'text', source: 'shared', note: extra }));
+    await saveTasks();
+    renderQueue(); renderBoard(); renderStats();
+  }
+  switchView('capture');
+}
+
 routeFromHash();
-loadState();
+loadState().then(handleIncomingShare);
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
