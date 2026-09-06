@@ -1,4 +1,4 @@
-const CACHE_NAME = 'command-deck-v2';
+const CACHE_NAME = 'command-deck-v3';
 const APP_SHELL = [
   './index.html',
   './manifest.json',

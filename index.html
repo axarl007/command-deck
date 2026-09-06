@@ -224,6 +224,35 @@
   .nav-btn:active{transform:scale(0.94);}
 
   ::-webkit-scrollbar{display:none;}
+
+  /* ATTACHMENTS */
+  .attach-btn{padding:12px 16px;}
+  .attach-btn svg{width:18px; height:18px; display:block;}
+  .attach-badge{
+    display:inline-flex; align-items:center; gap:6px; font-weight:600; cursor:pointer;
+    background:none; border:none; color:inherit; font-family:inherit; font-size:inherit; padding:0;
+  }
+  .attach-badge svg{width:15px; height:15px; color:var(--accent); flex-shrink:0;}
+  .overlay{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55);
+    z-index:50; align-items:flex-end; justify-content:center;
+  }
+  .overlay.open{display:flex;}
+  .overlay-panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-lg) var(--radius-lg) 0 0;
+    padding:var(--sp-4); width:100%; max-width:520px; max-height:85vh; overflow-y:auto;
+  }
+  @media(min-width:768px){
+    .overlay{align-items:center;}
+    .overlay-panel{border-radius:var(--radius-lg);}
+  }
+  .attach-row{display:flex; align-items:center; gap:var(--sp-3); margin-bottom:var(--sp-3);}
+  .attach-thumb{width:56px; height:56px; object-fit:cover; border-radius:8px; background:var(--panel-2); flex-shrink:0;}
+  .attach-file-icon{display:flex; align-items:center; justify-content:center; color:var(--text-dim);}
+  .attach-file-icon svg{width:24px; height:24px;}
+  .attach-meta{flex:1; font-size:var(--fs-sm); min-width:0;}
+  .attach-name{word-break:break-word;}
+  .attach-error{color:var(--danger); font-size:var(--fs-xs); margin-top:2px;}
 </style>
 </head>
 <body>
@@ -233,6 +262,8 @@
   <symbol id="i-board" viewBox="0 0 24 24"><rect x="4" y="9" width="4" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="10" y="4" width="4" height="16" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="16" y="12" width="4" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
   <symbol id="i-signal" viewBox="0 0 24 24"><path d="M8.5 17a6 6 0 0 1 0-10M15.5 7a6 6 0 0 1 0 10M5.5 19.5a10 10 0 0 1 0-15M18.5 4.5a10 10 0 0 1 0 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></symbol>
   <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l2-6 3 12 2-8 2 4h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-attach" viewBox="0 0 24 24"><path d="M16.5 6.5 9 14a3 3 0 1 0 4.24 4.24l7-7a5 5 0 1 0-7.07-7.07l-7 7a7 7 0 1 0 9.9 9.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v4h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
 </svg>
 
 <div id="app">
@@ -253,7 +284,11 @@
     <section class="view active" id="view-capture">
       <div class="capture-box">
         <textarea id="captureInput" placeholder="What's on your mind? Just dump it here..." rows="2"></textarea>
+        <input type="file" id="captureFileInput" accept="image/*,application/pdf" multiple style="display:none" onchange="onAttachFilesChosen(this.files)">
         <div class="capture-actions">
+          <button type="button" class="btn btn-ghost attach-btn" onclick="document.getElementById('captureFileInput').click()" aria-label="Attach a file">
+            <svg><use href="#i-attach"/></svg>
+          </button>
           <button class="btn btn-primary" onclick="addCapture()">Log it</button>
         </div>
       </div>
@@ -331,59 +366,117 @@
       Pulse
     </button>
   </nav>
+
+  <div class="overlay" id="attachOverlay">
+    <div class="overlay-panel">
+      <div class="section-title">Add context</div>
+      <div id="attachOverlayList"></div>
+      <div class="attach-error" id="attachSaveError" style="display:none"></div>
+      <textarea id="attachNote" placeholder="Add a note (optional)" rows="2"></textarea>
+      <div class="capture-actions">
+        <button class="btn btn-ghost" onclick="closeAttachOverlay()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveAttachCapture()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="viewOverlay">
+    <div class="overlay-panel">
+      <div class="section-title">Attachments</div>
+      <div id="viewOverlayList"></div>
+      <div class="capture-actions">
+        <button class="btn btn-ghost" onclick="closeViewOverlay()">Close</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
 let state = { tasks: [], insights: [], weekly: [] };
 
 const DB_NAME = 'command-deck';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE = 'kv';
+const ATTACH_STORE = 'attachments';
 
 let dbPromise = null;
 function openDB(){
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => { req.result.createObjectStore(STORE); };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      let settled = false;
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+        if(!db.objectStoreNames.contains(ATTACH_STORE)) db.createObjectStore(ATTACH_STORE);
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        if(settled){ db.close(); return; }
+        settled = true;
+        db.onversionchange = () => { db.close(); dbPromise = null; };
+        resolve(db);
+      };
+      req.onerror = () => { settled = true; reject(req.error); };
+      req.onblocked = () => {
+        console.error('IndexedDB upgrade blocked — another tab has this app open');
+        setTimeout(() => {
+          if(!settled){ settled = true; dbPromise = null; reject(new Error('IndexedDB upgrade blocked by another open tab')); }
+        }, 5000);
+      };
     });
   }
   return dbPromise;
 }
 
-async function idbGet(key){
+async function idbGet(key, store = STORE){
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readonly');
-    const req = tx.objectStore(STORE).get(key);
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).get(key);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
 
-async function idbSet(key, value){
+async function idbSet(key, value, store = STORE){
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(value, key);
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).put(value, key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
 }
 
+async function idbDelete(key, store = STORE){
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbGetAttachment(id){ return idbGet(id, ATTACH_STORE); }
+async function idbPutAttachment(id, file){ return idbSet(id, file, ATTACH_STORE); }
+async function idbDeleteAttachment(id){ return idbDelete(id, ATTACH_STORE); }
+
 async function loadState(){
   const [tasks, insights, weekly] = await Promise.allSettled([
     idbGet('cd-tasks'), idbGet('cd-insights'), idbGet('cd-weekly')
   ]);
+  [tasks, insights, weekly].forEach(r => {
+    if(r.status === 'rejected') console.error('Failed to load stored data:', r.reason);
+  });
   state.tasks = tasks.status === 'fulfilled' ? (tasks.value || []) : [];
   state.insights = insights.status === 'fulfilled' ? (insights.value || []) : [];
   state.weekly = weekly.status === 'fulfilled' ? (weekly.value || []) : [];
   renderAll();
 }
 
-async function saveTasks(){ try{ await idbSet('cd-tasks', state.tasks); }catch(e){ console.error(e); } }
+async function saveTasks(){ try{ await idbSet('cd-tasks', state.tasks); return true; }catch(e){ console.error(e); return false; } }
 async function saveInsights(){ try{ await idbSet('cd-insights', state.insights); }catch(e){ console.error(e); } }
 async function saveWeekly(){ try{ await idbSet('cd-weekly', state.weekly); }catch(e){ console.error(e); } }
 
@@ -400,6 +493,64 @@ function openLink(url){ window.open(url, '_blank', 'noopener'); }
 function openLinkFor(id){
   const t = state.tasks.find(x => x.id === id);
   if(t) openLink(t.text);
+}
+
+function renderTaskText(t){
+  if(t.type === 'attachment'){
+    return `<button type="button" class="attach-badge" onclick="viewAttachmentsFor('${t.id}')"><svg><use href="#i-attach"/></svg>${escapeHtml(attachmentLabel(t.attachments))}</button>${t.text ? `<div class="meta">${escapeHtml(t.text)}</div>` : ''}`;
+  }
+  return escapeHtml(t.text);
+}
+function taskSummaryText(t){
+  return t.type === 'attachment' ? attachmentLabel(t.attachments) : t.text;
+}
+
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+const EXTENSION_MIME_TYPES = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif', '.webp': 'image/webp', '.pdf': 'application/pdf'
+};
+const ACCEPTED_ATTACHMENT_EXTENSIONS = Object.keys(EXTENSION_MIME_TYPES);
+function inferMimeType(file){
+  if(file.type) return file.type;
+  const name = file.name.toLowerCase();
+  const ext = ACCEPTED_ATTACHMENT_EXTENSIONS.find(e => name.endsWith(e));
+  return ext ? EXTENSION_MIME_TYPES[ext] : file.type;
+}
+function isAcceptedAttachmentType(file){
+  // Raster images only — image/svg+xml is excluded because it can carry an
+  // embedded <script> that executes same-origin when opened as a top-level
+  // document from a blob: URL (blob: inherits the creating page's origin).
+  if(file.type === 'image/svg+xml') return false;
+  if(file.type.startsWith('image/') || file.type === 'application/pdf') return true;
+  if(!file.type){
+    // Some file pickers/content providers report an empty MIME type; fall
+    // back to the extension rather than reject a legitimate file outright.
+    const name = file.name.toLowerCase();
+    return ACCEPTED_ATTACHMENT_EXTENSIONS.some(ext => name.endsWith(ext));
+  }
+  return false;
+}
+function formatBytes(n){
+  if(n < 1024) return n + ' B';
+  if(n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+  return (n / (1024 * 1024)).toFixed(1) + ' MB';
+}
+function openBlobUrl(url){
+  // A same-document anchor click is more reliable than window.open() for
+  // blob: URLs across browsers (notably WebKit, which can open a blank tab
+  // when navigating a new browsing context directly to a blob: URL).
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+function attachmentLabel(attachments){
+  if(attachments.length === 1) return attachments[0].filename;
+  return `${attachments[0].filename} +${attachments.length - 1} more`;
 }
 
 function flagInvalid(el){
@@ -429,6 +580,8 @@ function laneAge(ts){
 const VIEWS = ['capture','board','signal','pulse'];
 
 function switchView(v){
+  closeAttachOverlay();
+  closeViewOverlay();
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
   document.getElementById('view-' + v).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(el => el.classList.toggle('active', el.dataset.view === v));
@@ -454,6 +607,160 @@ async function addCapture(){
   input.value = '';
   await saveTasks();
   renderQueue(); renderBoard(); renderStats();
+}
+
+let pendingAttachments = [];
+let pendingRejections = [];
+
+function onAttachFilesChosen(fileList){
+  pendingAttachments.forEach(a => { if(a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
+  pendingAttachments = [];
+  pendingRejections = [];
+  Array.from(fileList).forEach(file => {
+    if(!isAcceptedAttachmentType(file)){
+      pendingRejections.push({ filename: file.name, reason: 'unsupported type' });
+      return;
+    }
+    if(file.size > MAX_ATTACHMENT_BYTES){
+      pendingRejections.push({ filename: file.name, reason: 'over 15MB' });
+      return;
+    }
+    const mimeType = inferMimeType(file);
+    pendingAttachments.push({
+      id: uid(), file, mimeType,
+      previewUrl: mimeType.startsWith('image/') ? URL.createObjectURL(file) : null
+    });
+  });
+  if(pendingAttachments.length === 0 && pendingRejections.length === 0) return;
+  openAttachOverlay();
+}
+
+function openAttachOverlay(){
+  renderAttachOverlay();
+  document.getElementById('attachOverlay').classList.add('open');
+}
+
+function closeAttachOverlay(){
+  pendingAttachments.forEach(a => { if(a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
+  pendingAttachments = [];
+  pendingRejections = [];
+  document.getElementById('attachOverlay').classList.remove('open');
+  document.getElementById('attachNote').value = '';
+  document.getElementById('attachSaveError').style.display = 'none';
+  document.getElementById('captureFileInput').value = '';
+}
+
+function renderAttachOverlay(){
+  const list = document.getElementById('attachOverlayList');
+  list.innerHTML = pendingAttachments.map(a => `
+    <div class="attach-row">
+      ${a.previewUrl
+        ? `<img class="attach-thumb" src="${a.previewUrl}" alt="">`
+        : `<div class="attach-thumb attach-file-icon"><svg><use href="#i-file"/></svg></div>`}
+      <div class="attach-meta">
+        <div class="attach-name">${escapeHtml(a.file.name)}</div>
+        <div class="meta mono">${formatBytes(a.file.size)}</div>
+      </div>
+    </div>
+  `).join('') + pendingRejections.map(r => `
+    <div class="attach-row">
+      <div class="attach-thumb attach-file-icon"><svg><use href="#i-file"/></svg></div>
+      <div class="attach-meta">
+        <div class="attach-name">${escapeHtml(r.filename)}</div>
+        <div class="attach-error">Skipped — ${escapeHtml(r.reason)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+let savingAttachment = false;
+async function saveAttachCapture(){
+  if(savingAttachment) return;
+  const errEl = document.getElementById('attachSaveError');
+  errEl.style.display = 'none';
+  if(pendingAttachments.length === 0){
+    errEl.textContent = 'No valid files to save — remove the unsupported ones and try again, or Cancel.';
+    errEl.style.display = 'block';
+    return;
+  }
+  savingAttachment = true;
+  try {
+    const note = document.getElementById('attachNote').value.trim();
+    let metas;
+    try {
+      metas = await Promise.all(pendingAttachments.map(async (a) => {
+        await idbPutAttachment(a.id, a.file);
+        return { id: a.id, filename: a.file.name, mimeType: a.mimeType, size: a.file.size };
+      }));
+    } catch(e){
+      console.error(e);
+      await Promise.all(pendingAttachments.map(a => idbDeleteAttachment(a.id).catch(() => {})));
+      errEl.textContent = "Couldn't save — check available storage on this device and try again.";
+      errEl.style.display = 'block';
+      return;
+    }
+    const task = {
+      id: uid(), text: note, type: 'attachment', attachments: metas,
+      status: null, archived: false, flagged: false, laneEnteredAt: null, note: '', ts: Date.now()
+    };
+    state.tasks.unshift(task);
+    const ok = await saveTasks();
+    if(!ok){
+      state.tasks = state.tasks.filter(x => x.id !== task.id);
+      await Promise.all(metas.map(m => idbDeleteAttachment(m.id).catch(() => {})));
+      errEl.textContent = "Couldn't save — check available storage on this device and try again.";
+      errEl.style.display = 'block';
+      return;
+    }
+    closeAttachOverlay();
+    renderQueue(); renderBoard(); renderStats();
+  } finally {
+    savingAttachment = false;
+  }
+}
+
+let openAttachmentUrls = [];
+let viewOverlayLoading = false;
+
+async function viewAttachmentsFor(id){
+  if(viewOverlayLoading) return;
+  const t = state.tasks.find(x => x.id === id);
+  if(!t || !t.attachments) return;
+  viewOverlayLoading = true;
+  let resolved;
+  try {
+    resolved = await Promise.all(t.attachments.map(async (meta) => {
+      const file = await idbGetAttachment(meta.id);
+      return { meta, url: file ? URL.createObjectURL(file) : null };
+    }));
+  } catch(e){
+    console.error(e);
+    viewOverlayLoading = false;
+    return;
+  }
+  viewOverlayLoading = false;
+  openAttachmentUrls = resolved.map(r => r.url).filter(Boolean);
+  const list = document.getElementById('viewOverlayList');
+  list.innerHTML = resolved.map(r => `
+    <div class="attach-row">
+      ${r.url && r.meta.mimeType.startsWith('image/')
+        ? `<img class="attach-thumb" src="${r.url}" alt="">`
+        : `<div class="attach-thumb attach-file-icon"><svg><use href="#i-file"/></svg></div>`}
+      <div class="attach-meta">
+        <div class="attach-name">${escapeHtml(r.meta.filename)}</div>
+        <div class="meta mono">${formatBytes(r.meta.size)}</div>
+      </div>
+      ${r.url ? `<button class="mini-btn" onclick="openBlobUrl('${r.url}')">Open</button>` : ''}
+    </div>
+  `).join('');
+  document.getElementById('viewOverlay').classList.add('open');
+}
+
+function closeViewOverlay(){
+  document.getElementById('viewOverlay').classList.remove('open');
+  const urls = openAttachmentUrls;
+  openAttachmentUrls = [];
+  setTimeout(() => urls.forEach(u => URL.revokeObjectURL(u)), 30000);
 }
 
 async function setStatus(id, status){
@@ -502,7 +809,7 @@ function renderQueue(){
   el.innerHTML = untriaged.map(t => `
     <div class="queue-item">
       <div style="flex:1">
-        <div class="txt">${escapeHtml(t.text)}</div>
+        <div class="txt">${renderTaskText(t)}</div>
         <div class="meta mono">${timeAgo(t.ts)}</div>
         <div class="chip-row">
           ${LANES.filter(l => l.key !== 'done').map(l => `<div class="chip ${l.key}" onclick="setStatus('${t.id}','${l.key}')">${l.label}</div>`).join('')}
@@ -560,7 +867,7 @@ function renderBoard(){
         <div class="col-body">
           ${items.length === 0 ? '<div class="empty">Empty</div>' : items.map(t => `
             <div class="task-card ${c.key}">
-              ${t.flagged ? '<span class="flag-dot"></span>' : ''}${escapeHtml(t.text)}
+              ${t.flagged ? '<span class="flag-dot"></span>' : ''}${renderTaskText(t)}
               ${c.key === 'someday' ? `<div class="card-age mono">${laneAge(t.laneEnteredAt)} in Someday</div>` : ''}
               <div class="row-actions">
                 ${actionsFor(t)}
@@ -586,8 +893,15 @@ async function restoreTask(id){
 }
 
 async function deleteTask(id){
-  state.tasks = state.tasks.filter(t => t.id !== id);
-  await saveTasks();
+  const t = state.tasks.find(x => x.id === id);
+  state.tasks = state.tasks.filter(x => x.id !== id);
+  const ok = await saveTasks();
+  if(ok && t && t.attachments){
+    // Only reclaim attachment blobs once the task-list removal is actually
+    // persisted — otherwise a failed save would leave the on-disk task
+    // pointing at blobs we already deleted.
+    await Promise.all(t.attachments.map(a => idbDeleteAttachment(a.id).catch(e => console.error(e))));
+  }
   renderBoard(); renderQueue(); renderStats(); renderNowStrip(); renderSomedayReview();
   if(navigator.vibrate) navigator.vibrate([8,20,8]);
 }
@@ -614,7 +928,10 @@ function renderNowStrip(){
     el.innerHTML = `<svg><use href="#i-scope"/></svg><span class="txt">Nothing flagged — pick your one thing.</span>`;
   } else {
     el.className = 'now-strip';
-    el.innerHTML = `<span class="lbl">Now</span><span class="txt">${escapeHtml(t.text)}</span>${t.type === 'link' ? `<button class="mini-btn" onclick="event.stopPropagation(); openLinkFor('${t.id}')">Open</button>` : ''}`;
+    let action = '';
+    if(t.type === 'link') action = `<button class="mini-btn" onclick="event.stopPropagation(); openLinkFor('${t.id}')">Open</button>`;
+    else if(t.type === 'attachment') action = `<button class="mini-btn" onclick="event.stopPropagation(); viewAttachmentsFor('${t.id}')">View</button>`;
+    el.innerHTML = `<span class="lbl">Now</span><span class="txt">${escapeHtml(taskSummaryText(t))}</span>${action}`;
   }
 }
 
@@ -688,7 +1005,7 @@ function renderSomedayReview(){
   if(items.length === 0){ el.innerHTML = '<div class="empty">Nothing parked in Someday. Nice.</div>'; return; }
   el.innerHTML = items.map(t => `
     <div class="review-item">
-      <div class="txt">${escapeHtml(t.text)}</div>
+      <div class="txt">${renderTaskText(t)}</div>
       <div class="meta mono">${laneAge(t.laneEnteredAt)} in Someday</div>
       <div class="review-actions">
         ${t.type === 'link' ? `<button class="mini-btn" onclick="openLinkFor('${t.id}')">Open</button>` : ''}
