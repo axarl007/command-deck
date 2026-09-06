@@ -594,6 +594,7 @@ function laneAge(ts){
 const VIEWS = ['capture','board','signal','pulse'];
 
 function switchView(v){
+  if(savingAttachment) return;
   closeAttachOverlay();
   closeViewOverlay();
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
@@ -625,12 +626,18 @@ async function addCapture(){
 
 let pendingAttachments = [];
 let pendingRejections = [];
+let pendingAttachSource = 'manual';
 
-function onAttachFilesChosen(fileList){
+function clearPendingAttachments(){
   pendingAttachments.forEach(a => { if(a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
   pendingAttachments = [];
   pendingRejections = [];
-  Array.from(fileList).forEach(file => {
+}
+
+function queueFilesForAttach(files, source){
+  clearPendingAttachments();
+  pendingAttachSource = source;
+  files.forEach(file => {
     if(!isAcceptedAttachmentType(file)){
       pendingRejections.push({ filename: file.name, reason: 'unsupported type' });
       return;
@@ -649,15 +656,19 @@ function onAttachFilesChosen(fileList){
   openAttachOverlay();
 }
 
+function onAttachFilesChosen(fileList){
+  queueFilesForAttach(Array.from(fileList), 'manual');
+}
+
 function openAttachOverlay(){
   renderAttachOverlay();
   document.getElementById('attachOverlay').classList.add('open');
 }
 
 function closeAttachOverlay(){
-  pendingAttachments.forEach(a => { if(a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
-  pendingAttachments = [];
-  pendingRejections = [];
+  if(savingAttachment) return;
+  clearPendingAttachments();
+  pendingAttachSource = 'manual';
   document.getElementById('attachOverlay').classList.remove('open');
   document.getElementById('attachNote').value = '';
   document.getElementById('attachSaveError').style.display = 'none';
@@ -713,7 +724,7 @@ async function saveAttachCapture(){
       errEl.style.display = 'block';
       return;
     }
-    const task = makeTask({ text: note, type: 'attachment', attachments: metas });
+    const task = makeTask({ text: note, type: 'attachment', attachments: metas, source: pendingAttachSource === 'shared' ? 'shared' : undefined });
     state.tasks.unshift(task);
     const ok = await saveTasks();
     if(!ok){
@@ -723,6 +734,11 @@ async function saveAttachCapture(){
       errEl.style.display = 'block';
       return;
     }
+    // Clear the in-flight flag before closing — closeAttachOverlay() itself
+    // refuses to run while a save is in flight (to protect against Cancel/nav
+    // interrupting one), which would otherwise also block this, its own
+    // successful completion, from closing the overlay.
+    savingAttachment = false;
     closeAttachOverlay();
     renderQueue(); renderBoard(); renderStats();
   } finally {
@@ -1046,28 +1062,85 @@ function tickClock(){
 tickClock();
 setInterval(tickClock, 30000);
 
+const SHARE_CACHE_NAME = 'command-deck-share';
+
+async function readStagedShare(){
+  if(!('caches' in window)) return null;
+  const cache = await caches.open(SHARE_CACHE_NAME);
+  const metaResp = await cache.match('meta');
+  if(!metaResp) return null;
+  const meta = await metaResp.json();
+  const fileIndexes = Array.from({ length: meta.fileCount }, (_, i) => i);
+  const files = (await Promise.all(fileIndexes.map(async (i) => {
+    const resp = await cache.match(`file-${i}`);
+    if(!resp) return null;
+    const blob = await resp.blob();
+    const filename = decodeURIComponent(resp.headers.get('X-Filename') || `file-${i}`);
+    return new File([blob], filename, { type: resp.headers.get('Content-Type') || blob.type });
+  }))).filter(Boolean);
+  // Wipe the whole staging cache, not just the keys this share's meta knows
+  // about — its sole purpose is this transient handoff, so a share that
+  // overwrote an earlier, never-processed one shouldn't leave that one's
+  // files orphaned here forever.
+  const allKeys = await cache.keys();
+  await Promise.all(allKeys.map(req => cache.delete(req)));
+  return {
+    title: (meta.title || '').trim(),
+    text: (meta.text || '').trim(),
+    url: (meta.url || '').trim(),
+    files
+  };
+}
+
 async function handleIncomingShare(){
   const params = new URLSearchParams(location.search);
-  if(!params.has('title') && !params.has('text') && !params.has('url')) return;
-  const urlVal = (params.get('url') || '').trim();
-  const textVal = (params.get('text') || '').trim();
-  const titleVal = (params.get('title') || '').trim();
+  if(!params.has('shared')) return;
+  history.replaceState(null, '', location.pathname + '#capture');
+  switchView('capture');
+
+  let staged;
+  try {
+    staged = await readStagedShare();
+  } catch(e){
+    console.error('Failed to read staged share', e);
+    return;
+  }
+  if(!staged) return;
+  const { title, text, url, files } = staged;
+
   // Prefer the URL as the primary (actionable) content so link detection and
   // the Open action keep working — but a share can carry separate descriptive
   // text alongside it (e.g. sharing a page sends both), so keep that too
   // rather than silently dropping it.
-  const raw = urlVal || textVal || titleVal;
-  const extra = [urlVal, textVal, titleVal]
+  const raw = url || text || title;
+  const extra = [url, text, title]
     .filter(v => v && v !== raw)
     .filter((v, i, arr) => arr.indexOf(v) === i)
     .join(' — ');
-  history.replaceState(null, '', location.pathname + '#capture');
+
+  if(files.length > 0){
+    queueFilesForAttach(files, 'shared');
+    if(pendingAttachments.length > 0){
+      const prefill = [url, text, title].filter((v, i, arr) => v && arr.indexOf(v) === i).join(' — ');
+      if(prefill) document.getElementById('attachNote').value = prefill;
+      return;
+    }
+    if(!raw){
+      // Every shared file was rejected and there's nothing to fall back to —
+      // leave the overlay open showing why (already rendered by
+      // queueFilesForAttach) instead of silently discarding the share.
+      return;
+    }
+    // There's accompanying text/url to fall back to — don't strand the user
+    // on a dead-end "nothing to save" overlay.
+    closeAttachOverlay();
+  }
+
   if(raw){
     state.tasks.unshift(makeTask({ text: raw, type: isUrl(raw) ? 'link' : 'text', source: 'shared', note: extra }));
     await saveTasks();
     renderQueue(); renderBoard(); renderStats();
   }
-  switchView('capture');
 }
 
 routeFromHash();
