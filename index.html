@@ -171,7 +171,7 @@
   .task-card.done{border-left-color:var(--lane-done);}
   .card-age{font-size:var(--fs-xs); color:var(--text-dim); margin-top:var(--sp-1);}
   .task-card .row-actions{display:flex; gap:var(--sp-2); flex-wrap:wrap; margin-top:var(--sp-2);}
-  .mini-btn{font-size:var(--fs-xs); padding:6px 10px; border-radius:8px; background:transparent; border:1px solid var(--line); color:var(--text-dim); cursor:pointer; min-height:30px;}
+  .mini-btn{font-size:var(--fs-xs); padding:6px 10px; border-radius:8px; background:transparent; border:1px solid var(--line); color:var(--text-dim); cursor:pointer; min-height:30px; text-decoration:none; display:inline-flex; align-items:center;}
   .mini-btn.danger{color:var(--danger); border-color:var(--danger);}
   .mini-btn.active{color:var(--accent); border-color:var(--accent);}
   .flag-dot{display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent); margin-right:6px; vertical-align:middle;}
@@ -247,7 +247,10 @@
     .overlay-panel{border-radius:var(--radius-lg);}
   }
   .attach-row{display:flex; align-items:center; gap:var(--sp-3); margin-bottom:var(--sp-3);}
+  .attach-row:has(img.attach-thumb.expanded){flex-direction:column; align-items:stretch;}
   .attach-thumb{width:56px; height:56px; object-fit:cover; border-radius:8px; background:var(--panel-2); flex-shrink:0;}
+  img.attach-thumb{cursor:zoom-in;}
+  img.attach-thumb.expanded{width:100%; height:auto; max-height:70vh; object-fit:contain; cursor:zoom-out;}
   .attach-file-icon{display:flex; align-items:center; justify-content:center; color:var(--text-dim);}
   .attach-file-icon svg{width:24px; height:24px;}
   .attach-meta{flex:1; font-size:var(--fs-sm); min-width:0;}
@@ -550,17 +553,12 @@ function formatBytes(n){
   if(n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
   return (n / (1024 * 1024)).toFixed(1) + ' MB';
 }
-function openBlobUrl(url){
-  // A same-document anchor click is more reliable than window.open() for
-  // blob: URLs across browsers (notably WebKit, which can open a blank tab
-  // when navigating a new browsing context directly to a blob: URL).
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+function escapeAttr(str){
+  // escapeHtml() only escapes what's needed for safe *text node* content —
+  // browsers don't escape a bare `"` there, which would let it break out of
+  // a double-quoted HTML attribute. Used for the `download` filename below,
+  // since filenames are share-controlled text.
+  return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 function attachmentLabel(attachments){
   if(attachments.length === 1) return attachments[0].filename;
@@ -715,8 +713,8 @@ async function saveAttachCapture(){
     try {
       metas = await Promise.all(pendingAttachments.map(async (a) => {
         // Store with the inferred mimeType, not the file's own possibly-empty
-        // one — otherwise reopening it later (viewAttachmentsFor/openBlobUrl)
-        // would inherit the original empty type and mis-serve it.
+        // one — otherwise reopening it later (viewAttachmentsFor) would
+        // inherit the original empty type and mis-serve it.
         await idbPutAttachment(a.id, new File([a.file], a.file.name, { type: a.mimeType }));
         return { id: a.id, filename: a.file.name, mimeType: a.mimeType, size: a.file.size };
       }));
@@ -771,18 +769,22 @@ async function viewAttachmentsFor(id){
   viewOverlayLoading = false;
   openAttachmentUrls = resolved.map(r => r.url).filter(Boolean);
   const list = document.getElementById('viewOverlayList');
-  list.innerHTML = resolved.map(r => `
+  list.innerHTML = resolved.map((r, i) => {
+    const isImage = r.url && r.meta.mimeType.startsWith('image/');
+    return `
     <div class="attach-row">
-      ${r.url && r.meta.mimeType.startsWith('image/')
-        ? `<img class="attach-thumb" src="${r.url}" alt="">`
+      ${isImage
+        ? `<img class="attach-thumb" id="attach-img-${i}" src="${r.url}" alt="" onclick="this.classList.toggle('expanded')">`
         : `<div class="attach-thumb attach-file-icon"><svg><use href="#i-file"/></svg></div>`}
       <div class="attach-meta">
         <div class="attach-name">${escapeHtml(r.meta.filename)}</div>
         <div class="meta mono">${formatBytes(r.meta.size)}</div>
       </div>
-      ${r.url ? `<button class="mini-btn" onclick="openBlobUrl('${r.url}')">Open</button>` : ''}
+      ${isImage ? `<button class="mini-btn" onclick="document.getElementById('attach-img-${i}').classList.toggle('expanded')">View</button>` : ''}
+      ${r.url ? `<a class="mini-btn" href="${r.url}" download="${escapeAttr(r.meta.filename)}" target="_blank" rel="noopener">Save</a>` : ''}
     </div>
-  `).join('');
+  `;
+  }).join('');
   document.getElementById('viewOverlay').classList.add('open');
 }
 
