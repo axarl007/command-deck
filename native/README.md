@@ -21,6 +21,38 @@ domain by hand. Everything else — the Gradle project, `AndroidManifest.xml`, J
 classes, and every icon (`ic_launcher`, `ic_maskable`, notification icon, splash screens, shortcut
 icons at every density) — is real generated output, not stubbed.
 
+## Web Share Target (Android share sheet entry)
+
+`manifest.json`'s `share_target` (added after this TWA project was first generated — see
+"How this was generated" above) is now mirrored by hand into this native project so "Command
+Deck" can appear in Android's own share sheet, not just as a browser-installed PWA:
+
+- `AndroidManifest.xml`'s `LauncherActivity` gained two intent-filters (`ACTION_SEND` and
+  `ACTION_SEND_MULTIPLE`), scoped to `text/plain`, `image/*`, and `application/pdf` — matching the
+  accepted types in `manifest.json`'s `share_target.params.files`.
+- `LauncherActivity.java` overrides `getShareTarget()` (returning a `ShareTarget` built from
+  `com.google.androidbrowserhelper.trusted.sharing.ShareTarget`/`.Params`/`.FileFormField`,
+  mirroring `manifest.json`'s `share_target` exactly: POST, `multipart/form-data`, `title`/`text`/
+  `url` params, a `files` field accepting `image/*`/`application/pdf`) — this is the hook
+  `androidbrowserhelper`'s `LauncherActivity` documents for routing an incoming share `Intent`
+  into a real POST navigation against the verified origin's `share_target` action, reusing the
+  whole web-side flow from the PWA ticket without any further native code.
+
+**This has not been compiled or run** — same constraint as everything else in this scaffold (no
+Android SDK in this sandbox; see below). Unlike the rest of the project, though, this specific
+piece was hand-authored rather than `bubblewrap update`-generated, because regenerating requires
+the SDK. The `ShareTarget`/`Params`/`FileFormField` API surface is written from documented
+`androidbrowserhelper` behavior for the `2.6.2` version pinned in `app/build.gradle`, but has not
+been checked against that exact version's source — confirm the class/constructor shapes still
+match (or run a real `bubblewrap update` once the SDK is available, which would regenerate this
+correctly) before treating a share-sheet entry as working. A `./gradlew assembleDebug` is the
+actual test; nothing short of that confirms it compiles.
+
+The single highest-risk detail is the `ShareTarget` constructor call in `LauncherActivity.java`
+(see its own comment): whether it needs the `share_target` action URL as an explicit argument, or
+derives its POST destination from `getLaunchingUrl()` instead, is genuinely uncertain from memory
+alone — check that against the library source first.
+
 ## What's left before this builds or installs anywhere
 
 1. **Android SDK.** Install Android Studio (or the standalone `cmdline-tools` + `sdkmanager`) locally —
@@ -44,7 +76,9 @@ icons at every density) — is real generated output, not stubbed.
    that doesn't exist yet).
 4. **Build.** `./gradlew assembleDebug` (or `assembleRelease` once signed) from this directory, once 1–3
    are done. Not run here — no Android SDK in this environment, so I cannot confirm it actually compiles,
-   only that the generated project has the shape and content `bubblewrap init` normally produces.
+   only that the generated project has the shape and content `bubblewrap init` normally produces. This is
+   also the first real check on `LauncherActivity.java`'s hand-authored `getShareTarget()` override (see
+   "Web Share Target" above) — confirm it actually compiles against `androidbrowserhelper:2.6.2`.
 5. **Install on a device/emulator.** No device or emulator is attached to this environment either — this
    is genuinely a "run it yourself" step.
 

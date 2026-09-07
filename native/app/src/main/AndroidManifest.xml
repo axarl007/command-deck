@@ -154,9 +154,25 @@
                 />
             </intent-filter>
 
-            
+            <!-- Mirrors manifest.json's share_target (added after this TWA project was
+                 generated — see LauncherActivity.java's getShareTarget() override, and
+                 native/README.md for the caveat that this hasn't been build-verified). -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
 
-            
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+
+
         </activity>
 
         <activity android:name="com.google.androidbrowserhelper.trusted.FocusActivity" />
