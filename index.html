@@ -171,7 +171,7 @@
   .task-card.done{border-left-color:var(--lane-done);}
   .card-age{font-size:var(--fs-xs); color:var(--text-dim); margin-top:var(--sp-1);}
   .task-card .row-actions{display:flex; gap:var(--sp-2); flex-wrap:wrap; margin-top:var(--sp-2);}
-  .mini-btn{font-size:var(--fs-xs); padding:6px 10px; border-radius:8px; background:transparent; border:1px solid var(--line); color:var(--text-dim); cursor:pointer; min-height:30px;}
+  .mini-btn{font-size:var(--fs-xs); padding:6px 10px; border-radius:8px; background:transparent; border:1px solid var(--line); color:var(--text-dim); cursor:pointer; min-height:30px; text-decoration:none; display:inline-flex; align-items:center;}
   .mini-btn.danger{color:var(--danger); border-color:var(--danger);}
   .mini-btn.active{color:var(--accent); border-color:var(--accent);}
   .flag-dot{display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent); margin-right:6px; vertical-align:middle;}
@@ -247,7 +247,10 @@
     .overlay-panel{border-radius:var(--radius-lg);}
   }
   .attach-row{display:flex; align-items:center; gap:var(--sp-3); margin-bottom:var(--sp-3);}
+  .attach-row:has(img.attach-thumb.expanded){flex-direction:column; align-items:stretch;}
   .attach-thumb{width:56px; height:56px; object-fit:cover; border-radius:8px; background:var(--panel-2); flex-shrink:0;}
+  img.attach-thumb{cursor:zoom-in;}
+  img.attach-thumb.expanded{width:100%; height:auto; max-height:70vh; object-fit:contain; cursor:zoom-out;}
   .attach-file-icon{display:flex; align-items:center; justify-content:center; color:var(--text-dim);}
   .attach-file-icon svg{width:24px; height:24px;}
   .attach-meta{flex:1; font-size:var(--fs-sm); min-width:0;}
@@ -345,6 +348,20 @@
           <button class="btn btn-primary" onclick="addWeekly()">Save entry</button>
         </div>
         <div id="weeklyList"></div>
+      </div>
+
+      <div class="section-title">Backup</div>
+      <div class="weekly-log">
+        <div class="meta">Export everything — captures, board items, signals, weekly logs, and
+          attachments — as a single file you can keep safe. Import merges a backup back in without
+          touching what's already here; anything already present is skipped.</div>
+        <input type="file" id="importFileInput" accept="application/json" style="display:none" onchange="onImportFileChosen(this.files)">
+        <div class="capture-actions" style="justify-content:flex-start; margin-top:var(--sp-3);">
+          <button class="btn btn-ghost" onclick="exportAllData()">Export all data</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('importFileInput').click()">Import backup</button>
+        </div>
+        <div class="attach-error" id="backupError" style="display:none; margin-top:var(--sp-2);"></div>
+        <div class="meta mono" id="backupSummary" style="display:none; margin-top:var(--sp-2);"></div>
       </div>
     </section>
   </main>
@@ -478,8 +495,281 @@ async function loadState(){
 }
 
 async function saveTasks(){ try{ await idbSet('cd-tasks', state.tasks); return true; }catch(e){ console.error(e); return false; } }
-async function saveInsights(){ try{ await idbSet('cd-insights', state.insights); }catch(e){ console.error(e); } }
-async function saveWeekly(){ try{ await idbSet('cd-weekly', state.weekly); }catch(e){ console.error(e); } }
+async function saveInsights(){ try{ await idbSet('cd-insights', state.insights); return true; }catch(e){ console.error(e); return false; } }
+async function saveWeekly(){ try{ await idbSet('cd-weekly', state.weekly); return true; }catch(e){ console.error(e); return false; } }
+
+function blobToBase64(blob){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function base64ToBlob(base64, mimeType){
+  const byteChars = atob(base64);
+  const bytes = new Uint8Array(byteChars.length);
+  for(let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
+}
+
+function estimateBase64DecodedSize(base64){
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  return Math.floor(base64.length * 3 / 4) - padding;
+}
+
+async function exportAllData(){
+  const errEl = document.getElementById('backupError');
+  const summaryEl = document.getElementById('backupSummary');
+  errEl.style.display = 'none';
+  summaryEl.style.display = 'none';
+  try {
+    const attachmentIds = new Set();
+    state.tasks.forEach(t => { if(t.attachments) t.attachments.forEach(a => attachmentIds.add(a.id)); });
+    const attachments = {};
+    await Promise.all(Array.from(attachmentIds).map(async (id) => {
+      const file = await idbGetAttachment(id);
+      if(!file) return;
+      attachments[id] = { data: await blobToBase64(file), mimeType: file.type, filename: file.name };
+    }));
+    const payload = {
+      format: 'command-deck-backup-v1',
+      exportedAt: Date.now(),
+      tasks: state.tasks,
+      insights: state.insights,
+      weekly: state.weekly,
+      attachments
+    };
+    const json = JSON.stringify(payload);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `command-deck-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } catch(e){
+    console.error(e);
+    errEl.textContent = "Couldn't export — check available storage/memory on this device and try again.";
+    errEl.style.display = 'block';
+  }
+}
+
+function sanitizeImportedTask(t){
+  if(!t || typeof t !== 'object' || typeof t.id !== 'string') return null;
+  const validTypes = ['text', 'link', 'attachment'];
+  let type = validTypes.includes(t.type) ? t.type : 'text';
+  let text = typeof t.text === 'string' ? t.text : '';
+  // Every other path that sets type:'link' gates it on isUrl() (http/https
+  // only) — an imported backup is untrusted input and must not bypass that,
+  // since openLinkFor() ultimately does window.open(t.text, ...).
+  if(type === 'link' && !isUrl(text)) type = 'text';
+  const attachments = Array.isArray(t.attachments)
+    ? t.attachments
+        .filter(a => a && typeof a.id === 'string' && typeof a.filename === 'string')
+        .map(a => ({
+          id: a.id,
+          filename: a.filename,
+          mimeType: typeof a.mimeType === 'string' ? a.mimeType : '',
+          size: typeof a.size === 'number' ? a.size : 0
+        }))
+    : [];
+  if(type === 'attachment' && attachments.length === 0){
+    type = 'text';
+    // Same fallback as the post-import "blob never resolved" path — a
+    // claimed-but-unusable attachment shouldn't silently become a blank
+    // capture with no content at all.
+    if(!text) text = '(unavailable attachment)';
+  }
+  return {
+    id: t.id,
+    text,
+    type,
+    attachments: type === 'attachment' ? attachments : undefined,
+    status: ['today', 'week', 'someday'].includes(t.status) ? t.status : null,
+    archived: !!t.archived,
+    flagged: !!t.flagged,
+    laneEnteredAt: typeof t.laneEnteredAt === 'number' ? t.laneEnteredAt : null,
+    note: typeof t.note === 'string' ? t.note : '',
+    ts: typeof t.ts === 'number' ? t.ts : Date.now(),
+    source: t.source === 'shared' ? 'shared' : undefined
+  };
+}
+
+function sanitizeImportedInsight(i){
+  if(!i || typeof i !== 'object' || typeof i.id !== 'string') return null;
+  return {
+    id: i.id,
+    source: typeof i.source === 'string' ? i.source : 'Other',
+    text: typeof i.text === 'string' ? i.text : '',
+    ref: typeof i.ref === 'string' ? i.ref : '',
+    ts: typeof i.ts === 'number' ? i.ts : Date.now()
+  };
+}
+
+function sanitizeImportedWeekly(w){
+  if(!w || typeof w !== 'object' || typeof w.id !== 'string') return null;
+  return {
+    id: w.id,
+    week: typeof w.week === 'string' ? w.week : '',
+    shipped: typeof w.shipped === 'string' ? w.shipped : '',
+    stuck: typeof w.stuck === 'string' ? w.stuck : '',
+    surprise: typeof w.surprise === 'string' ? w.surprise : '',
+    ts: typeof w.ts === 'number' ? w.ts : Date.now()
+  };
+}
+
+async function onImportFileChosen(fileList){
+  const file = fileList[0];
+  const fileInputEl = document.getElementById('importFileInput');
+  const errEl = document.getElementById('backupError');
+  const summaryEl = document.getElementById('backupSummary');
+  errEl.style.display = 'none';
+  summaryEl.style.display = 'none';
+  if(!file){ return; }
+
+  let payload;
+  try {
+    payload = JSON.parse(await file.text());
+  } catch(e){
+    console.error(e);
+    errEl.textContent = "Couldn't read that file — make sure it's a Command Deck backup JSON.";
+    errEl.style.display = 'block';
+    fileInputEl.value = '';
+    return;
+  }
+  if(!payload || typeof payload !== 'object' || !Array.isArray(payload.tasks)){
+    errEl.textContent = "That file doesn't look like a Command Deck backup.";
+    errEl.style.display = 'block';
+    fileInputEl.value = '';
+    return;
+  }
+
+  let addedTasks = 0, addedInsights = 0, addedWeekly = 0, addedAttachments = 0;
+  const newlyAddedTasks = [];
+
+  const existingTaskIds = new Set(state.tasks.map(t => t.id));
+  for(const raw of payload.tasks){
+    const t = sanitizeImportedTask(raw);
+    if(t && !existingTaskIds.has(t.id)){
+      state.tasks.push(t);
+      existingTaskIds.add(t.id);
+      newlyAddedTasks.push(t);
+      addedTasks++;
+    }
+  }
+
+  const existingInsightIds = new Set(state.insights.map(i => i.id));
+  for(const raw of (Array.isArray(payload.insights) ? payload.insights : [])){
+    const i = sanitizeImportedInsight(raw);
+    if(i && !existingInsightIds.has(i.id)){
+      state.insights.push(i);
+      existingInsightIds.add(i.id);
+      addedInsights++;
+    }
+  }
+
+  const existingWeeklyIds = new Set(state.weekly.map(w => w.id));
+  for(const raw of (Array.isArray(payload.weekly) ? payload.weekly : [])){
+    const w = sanitizeImportedWeekly(raw);
+    if(w && !existingWeeklyIds.has(w.id)){
+      state.weekly.push(w);
+      existingWeeklyIds.add(w.id);
+      addedWeekly++;
+    }
+  }
+
+  state.tasks.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  state.insights.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  state.weekly.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+  // Every other path that flags a task (toggleFlag) clears every other
+  // task's flag first, guaranteeing at most one flagged task ever exists —
+  // an imported backup can carry its own flagged task, so re-enforce that
+  // same invariant after merging rather than ending up with two.
+  state.tasks.filter(t => t.flagged).slice(1).forEach(t => { t.flagged = false; });
+
+  const attachmentsPayload = (payload.attachments && typeof payload.attachments === 'object') ? payload.attachments : {};
+  // id -> canonical {filename, mimeType, size} derived from the actual
+  // confirmed blob — never trust a task's own attachment metadata claims,
+  // since a backup's per-task attachments[] and top-level attachments{} are
+  // independent, untrusted fields that a hand-edited file could mismatch.
+  const confirmedAttachmentMeta = new Map();
+  await Promise.all(Object.keys(attachmentsPayload).map(async (id) => {
+    const meta = attachmentsPayload[id];
+    if(!meta || typeof meta.data !== 'string') return;
+    const existing = await idbGetAttachment(id).catch(() => null);
+    if(existing){
+      confirmedAttachmentMeta.set(id, { filename: existing.name, mimeType: existing.type, size: existing.size });
+      return;
+    }
+    try {
+      // Reject on the base64 string's own length first — atob() would fully
+      // decode (and allocate) an oversized payload before a post-hoc size
+      // check on the result ever got a chance to reject it.
+      if(estimateBase64DecodedSize(meta.data) > MAX_ATTACHMENT_BYTES) return;
+      const blob = base64ToBlob(meta.data, meta.mimeType || '');
+      if(blob.size > MAX_ATTACHMENT_BYTES) return;
+      const probe = new File([blob], meta.filename || id, { type: meta.mimeType || '' });
+      if(!isAcceptedAttachmentType(probe)) return;
+      const finalType = inferMimeType(probe);
+      await idbPutAttachment(id, new File([blob], meta.filename || id, { type: finalType }));
+      confirmedAttachmentMeta.set(id, { filename: meta.filename || id, mimeType: finalType, size: blob.size });
+      addedAttachments++;
+    } catch(e){
+      console.error('Failed to import attachment', id, e);
+    }
+  }));
+
+  // A task can claim an attachment whose blob never actually made it in
+  // (corrupted/hand-edited backup, rejected type/size) — drop just that
+  // reference rather than leave a badge for a file that can never open.
+  for(const t of newlyAddedTasks){
+    if(t.type !== 'attachment' || !t.attachments) continue;
+    const checked = await Promise.all(t.attachments.map(async (a) => {
+      let meta = confirmedAttachmentMeta.get(a.id);
+      if(!meta){
+        const file = await idbGetAttachment(a.id).catch(() => null);
+        if(file){
+          meta = { filename: file.name, mimeType: file.type, size: file.size };
+          confirmedAttachmentMeta.set(a.id, meta);
+        }
+      }
+      return { id: a.id, meta };
+    }));
+    const kept = checked.filter(c => c.meta).map(c => ({ id: c.id, ...c.meta }));
+    if(kept.length === 0){
+      if(!t.text){
+        const droppedNames = t.attachments.map(a => a.filename).filter(Boolean).join(', ');
+        t.text = droppedNames ? `(unavailable: ${droppedNames})` : '(unavailable attachment)';
+      }
+      t.type = 'text';
+      t.attachments = undefined;
+    } else {
+      // Always replace with the canonical, blob-derived metadata — even when
+      // the count is unchanged, the task's own claimed filename/mimeType/size
+      // per entry is untrusted and may not match the real stored blob.
+      t.attachments = kept;
+    }
+  }
+
+  const okTasks = await saveTasks();
+  const okInsights = await saveInsights();
+  const okWeekly = await saveWeekly();
+  renderAll();
+  fileInputEl.value = '';
+
+  if(!okTasks || !okInsights || !okWeekly){
+    errEl.textContent = 'Some imported data may not have saved — check available storage on this device.';
+    errEl.style.display = 'block';
+  }
+  const weeklyWord = addedWeekly === 1 ? 'entry' : 'entries';
+  summaryEl.textContent = `Imported ${addedTasks} capture(s), ${addedInsights} signal(s), ${addedWeekly} weekly ${weeklyWord}, ${addedAttachments} attachment(s). Anything already present was skipped.`;
+  summaryEl.style.display = 'block';
+}
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
@@ -550,17 +840,12 @@ function formatBytes(n){
   if(n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
   return (n / (1024 * 1024)).toFixed(1) + ' MB';
 }
-function openBlobUrl(url){
-  // A same-document anchor click is more reliable than window.open() for
-  // blob: URLs across browsers (notably WebKit, which can open a blank tab
-  // when navigating a new browsing context directly to a blob: URL).
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+function escapeAttr(str){
+  // escapeHtml() only escapes what's needed for safe *text node* content —
+  // browsers don't escape a bare `"` there, which would let it break out of
+  // a double-quoted HTML attribute. Used for the `download` filename below,
+  // since filenames are share-controlled text.
+  return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 function attachmentLabel(attachments){
   if(attachments.length === 1) return attachments[0].filename;
@@ -715,8 +1000,8 @@ async function saveAttachCapture(){
     try {
       metas = await Promise.all(pendingAttachments.map(async (a) => {
         // Store with the inferred mimeType, not the file's own possibly-empty
-        // one — otherwise reopening it later (viewAttachmentsFor/openBlobUrl)
-        // would inherit the original empty type and mis-serve it.
+        // one — otherwise reopening it later (viewAttachmentsFor) would
+        // inherit the original empty type and mis-serve it.
         await idbPutAttachment(a.id, new File([a.file], a.file.name, { type: a.mimeType }));
         return { id: a.id, filename: a.file.name, mimeType: a.mimeType, size: a.file.size };
       }));
@@ -771,18 +1056,22 @@ async function viewAttachmentsFor(id){
   viewOverlayLoading = false;
   openAttachmentUrls = resolved.map(r => r.url).filter(Boolean);
   const list = document.getElementById('viewOverlayList');
-  list.innerHTML = resolved.map(r => `
+  list.innerHTML = resolved.map((r, i) => {
+    const isImage = r.url && r.meta.mimeType.startsWith('image/');
+    return `
     <div class="attach-row">
-      ${r.url && r.meta.mimeType.startsWith('image/')
-        ? `<img class="attach-thumb" src="${r.url}" alt="">`
+      ${isImage
+        ? `<img class="attach-thumb" id="attach-img-${i}" src="${r.url}" alt="" onclick="this.classList.toggle('expanded')">`
         : `<div class="attach-thumb attach-file-icon"><svg><use href="#i-file"/></svg></div>`}
       <div class="attach-meta">
         <div class="attach-name">${escapeHtml(r.meta.filename)}</div>
         <div class="meta mono">${formatBytes(r.meta.size)}</div>
       </div>
-      ${r.url ? `<button class="mini-btn" onclick="openBlobUrl('${r.url}')">Open</button>` : ''}
+      ${isImage ? `<button class="mini-btn" onclick="document.getElementById('attach-img-${i}').classList.toggle('expanded')">View</button>` : ''}
+      ${r.url ? `<a class="mini-btn" href="${r.url}" download="${escapeAttr(r.meta.filename)}" target="_blank" rel="noopener">Save</a>` : ''}
     </div>
-  `).join('');
+  `;
+  }).join('');
   document.getElementById('viewOverlay').classList.add('open');
 }
 
@@ -991,7 +1280,7 @@ function renderWeekly(){
   const el = document.getElementById('weeklyList');
   el.innerHTML = state.weekly.slice(0,10).map(w => `
     <div class="log-entry">
-      <div class="wk mono">${w.week}</div>
+      <div class="wk mono">${escapeHtml(w.week)}</div>
       ${w.shipped ? `<div class="field"><b>Shipped:</b> ${escapeHtml(w.shipped)}</div>` : ''}
       ${w.stuck ? `<div class="field"><b>Stuck:</b> ${escapeHtml(w.stuck)}</div>` : ''}
       ${w.surprise ? `<div class="field"><b>Surprised:</b> ${escapeHtml(w.surprise)}</div>` : ''}
