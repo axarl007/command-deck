@@ -136,6 +136,7 @@
   /* BOARD */
   .lane-pills{display:none; gap:var(--sp-2); flex-wrap:wrap; margin-bottom:var(--sp-4);}
   @media(max-width:1023.98px){ .lane-pills{display:flex;} }
+  @media(min-width:1024px){ .lane-pills.focused{display:flex;} }
   .lane-pill{
     font-size:var(--fs-xs); padding:8px 14px; border-radius:20px; border:1px solid var(--line);
     background:var(--panel-2); color:var(--text-dim); cursor:pointer; font-weight:500;
@@ -145,15 +146,21 @@
   .lane-pill.week{--lane-color:var(--lane-week);}
   .lane-pill.someday{--lane-color:var(--lane-someday);}
   .lane-pill.done{--lane-color:var(--lane-done);}
+  .lane-pill.all{--lane-color:var(--accent);}
+  @media(max-width:1023.98px){ .lane-pill.all{display:none;} }
   .lane-pill.active{border-color:var(--lane-color); color:var(--lane-color); background:var(--panel);}
-  .board-scroller{display:flex; gap:var(--sp-3); flex-wrap:wrap;}
+  .board-scroller{display:flex; gap:var(--sp-3); flex-wrap:wrap; justify-content:center;}
   .column{
     width:100%; flex-shrink:0; display:none;
     background:var(--panel); border-radius:var(--radius-lg); border:1px solid var(--line);
     padding:var(--sp-4); max-height: calc(100vh - 320px); flex-direction:column;
   }
   .column.lane-active{display:flex;}
-  @media(min-width:1024px){ .column{display:flex; width:23%; max-height: calc(100vh - 260px);} }
+  @media(min-width:1024px){
+    .col-head{cursor:pointer;}
+    .board-scroller.overview .column{display:flex; width:23%; max-height: calc(100vh - 260px);}
+    .board-scroller:not(.overview) .column.lane-active{width:100%; max-width:760px; max-height: calc(100vh - 260px);}
+  }
   .col-head{display:flex; align-items:center; gap:var(--sp-2); margin-bottom:var(--sp-3);}
   .col-bar{width:4px; height:16px; border-radius:2px;}
   .col-bar.today{background:var(--lane-today);} .col-bar.week{background:var(--lane-week);}
@@ -882,6 +889,11 @@ function switchView(v){
   if(savingAttachment) return;
   closeAttachOverlay();
   closeViewOverlay();
+  if(v === 'board'){
+    boardActiveLane = 'today';
+    boardOverview = false;
+    renderBoard();
+  }
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
   document.getElementById('view-' + v).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(el => el.classList.toggle('active', el.dataset.view === v));
@@ -1147,23 +1159,45 @@ const LANES = [
   {key:'someday', label:'Someday'}, {key:'done', label:'Done'}
 ];
 let boardActiveLane = 'today';
+let boardOverview = false;
 
 function selectLane(key){
   boardActiveLane = key;
+  boardOverview = false;
+  renderBoard();
+  if(navigator.vibrate) navigator.vibrate(8);
+}
+
+function selectAllLanes(){
+  boardOverview = true;
+  renderBoard();
+  if(navigator.vibrate) navigator.vibrate(8);
+}
+
+function focusLane(key){
+  if(window.innerWidth < 1024) return;
+  if(boardOverview){
+    boardActiveLane = key;
+    boardOverview = false;
+  } else {
+    boardOverview = true;
+  }
   renderBoard();
   if(navigator.vibrate) navigator.vibrate(8);
 }
 
 function renderLanePills(){
   const el = document.getElementById('lanePills');
+  el.classList.toggle('focused', !boardOverview);
   el.innerHTML = LANES.map(l => `
-    <button class="lane-pill ${l.key} ${l.key === boardActiveLane ? 'active' : ''}" onclick="selectLane('${l.key}')">${l.label}</button>
-  `).join('');
+    <button class="lane-pill ${l.key} ${!boardOverview && l.key === boardActiveLane ? 'active' : ''}" onclick="selectLane('${l.key}')">${l.label}</button>
+  `).join('') + `<button class="lane-pill all ${boardOverview ? 'active' : ''}" onclick="selectAllLanes()">All</button>`;
 }
 
 function renderBoard(){
   renderLanePills();
   const el = document.getElementById('boardScroller');
+  el.classList.toggle('overview', boardOverview);
   el.innerHTML = LANES.map(c => {
     const items = c.key === 'done'
       ? state.tasks.filter(t => t.archived)
@@ -1178,7 +1212,7 @@ function renderBoard(){
          <button class="mini-btn danger" onclick="deleteTask('${t.id}')">Delete</button>`;
     return `
       <div class="column ${c.key} ${c.key === boardActiveLane ? 'lane-active' : ''}">
-        <div class="col-head">
+        <div class="col-head" onclick="focusLane('${c.key}')">
           <div class="col-bar ${c.key}"></div>
           <div class="col-title">${c.label}</div>
           <div class="col-count mono">${items.length}</div>
